@@ -1,0 +1,14 @@
+name: miagis-assistant
+services:
+  jupyter-nb:
+    container_name: jupyter-nb
+    profiles: [fullstack, "nb-only"]
+    image: quay.io/jupyter/scipy-notebook:x86_64-notebook-7.4.7
+    ports:
+      - "8888:8888"
+    volumes:
+      - "./_demo:/home/jovyan/work"
+    user: root
+    env_file: "./.env"
+    environment:
+      GRANT_SUDO: yes
