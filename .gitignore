@@ -1,3 +1,6 @@
+# Langgraph runtime files
+.langgraph_api
+
 # Python-generated files
 __pycache__/
 *.py[oc]
