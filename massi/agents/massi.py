@@ -215,7 +215,7 @@ def _is_last_query_step_reached(
     query_steps = state.get("query_plan", {}).get("queries", {})
     last_step_id = max(query_steps.keys(), default=None)
     current_step_id = taken_step_id or state.get("current_step_id", None)
-    return last_step_id and current_step_id and (last_step_id == current_step_id)
+    return bool(last_step_id and current_step_id and (last_step_id == current_step_id))
 
 
 def is_query_plan_completed(state: BaseMetadataState) -> QueryPlanExecutionState:
@@ -314,22 +314,18 @@ def pull_ready_user_query(state: BaseMetadataState) -> BaseMetadataState:
     first_step_id = min(query_steps.keys(), default=None)
     last_step_id = max(query_steps.keys(), default=None)
     current_step_id = state.get("current_step_id", None)
+    taken_step_id = None
 
-    if (
-        all([first_step_id, last_step_id, current_step_id])
-        and current_step_id >= first_step_id
-        and current_step_id < last_step_id
-    ):
-        taken_step_id = current_step_id + 1
-    elif current_step_id == last_step_id:
-        taken_step_id = current_step_id
-    else:
-        taken_step_id = first_step_id
+    taken_step_id = (
+        first_step_id
+        if current_step_id is None
+        else min(current_step_id + 1, last_step_id)
+    )
 
     taken_query = query_steps.get(taken_step_id)
     is_last_step_reached = _is_last_query_step_reached(
         state, taken_step_id=taken_step_id
-    ) or False
+    )
 
     return {
         "current_step_id": taken_step_id,
@@ -338,8 +334,8 @@ def pull_ready_user_query(state: BaseMetadataState) -> BaseMetadataState:
     }
 
 
-def build_graph(config: Config):
-    llm = create_ollama_llm(config)
+def build_graph(config: Config, llm_client: BaseChatModel | None = None):
+    llm = llm_client or create_ollama_llm(config)
 
     builder = StateGraph(BaseMetadataState)
     builder.add_node(n.__name__, n) if (n := ensure_metadata_file_presence) else ...
@@ -370,6 +366,7 @@ def build_graph(config: Config):
     )
     builder.add_edge(interpret_metadata_checks.__name__, plan_user_query.__name__)
     builder.add_edge(plan_user_query.__name__, pull_ready_user_query.__name__)
+    # TODO(error?): check why the graph display fails
     builder.add_conditional_edges(
         pull_ready_user_query.__name__,
         is_query_plan_completed,
@@ -382,5 +379,6 @@ def build_graph(config: Config):
     memory = MemorySaver()
     return builder.compile(
         interrupt_before=[interpret_metadata_checks.__name__, plan_user_query.__name__],
+        interrupt_after=[pull_ready_user_query.__name__],
         checkpointer=memory,
     )
