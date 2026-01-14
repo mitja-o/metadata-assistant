@@ -5,6 +5,7 @@ description = "(M)IAGIS (Assi)stant is an LLM-Agent helper for generating MIAGIS
 readme = "README.md"
 requires-python = ">=3.13"
 dependencies = [
+    "grandalf>=0.8",
     "ipython>=8.38.0",
     "jsonschema>=4.25.1",
     "langchain>=1.2.0",

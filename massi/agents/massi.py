@@ -64,6 +64,7 @@ class Defaults:
     )
 
 
+# TODO(upstream-issue): enums don't work well with Langgraph's rendering
 class QueryPlanExecutionState(Enum):
     STOP = 0
     ACT = 1
@@ -415,16 +416,17 @@ def build_graph(config: Config, dependencies: Dependencies | None = None):
     builder.add_edge(plan_user_query.__name__, pull_ready_user_query.__name__)
     builder.add_edge(pull_ready_user_query.__name__, prompt_user_query.__name__)
     builder.add_edge(prompt_user_query.__name__, register_user_query_response.__name__)
-    # # FIXME(error?): check why the graph display fails
-    # builder.add_conditional_edges(
-    #     pull_ready_user_query.__name__,
-    #     is_query_plan_completed,
-    #     {
-    #         QueryPlanExecutionState.STOP: END,
-    #         QueryPlanExecutionState.ACT: pull_ready_user_query.__name__,
-    #     },
-    # )
-    builder.add_edge(register_user_query_response.__name__, END)
+    # builder.add_edge(register_user_query_response.__name__, END)
+    # # FIXME(rendering-display): 
+    builder.add_conditional_edges(
+        register_user_query_response.__name__,
+        is_query_plan_completed,
+        {
+            # FIXME(upstream-issue): when rendering mermaid, this should be wrapped in `"` because `.` in the key breaks mermaid rendering
+            QueryPlanExecutionState.STOP: END,
+            QueryPlanExecutionState.ACT: pull_ready_user_query.__name__,
+        },
+    )
 
     memory = MemorySaver()
     return builder.compile(
