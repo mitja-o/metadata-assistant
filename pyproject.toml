@@ -14,8 +14,16 @@ dependencies = [
 ]
 
 [dependency-groups]
-dev = ["langgraph-cli[inmem]>=0.4.11", "pytest>=9.0.2"]
+dev = [
+    "isort>=7.0.0",
+    "langgraph-cli[inmem]>=0.4.11",
+    "mypy>=1.19.1",
+    "pytest>=9.0.2",
+]
 
 [tool.pytest]
 minversion = "9.0"
 addopts = ["--doctest-modules"]
+
+[tool.isort]
+profile = "black"
