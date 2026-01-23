@@ -1,0 +1,43 @@
+# List of tasks to complete for the baseline MIAGIS assistant
+use_cases:
+  backlog: # Use cases yet to be implemented
+    - id: UC3
+      tag: input-reference-validation
+      description: |
+        massi can evaluate the consistency and relevance of user provided and inferred information
+      expected-outcome: a set of inconsistency flags and improvement suggestions
+    - id: UC4
+      tag: iterative-refinement
+      description: |
+        massi supports an ongoing dialogue and iterative value refinement for inquiry-style queries
+      expected-outcome: an interaction scheme where a user answer is not a single input but a dialogue
+  doing: # Use cases in progress
+    - id: UC2
+      tag: used-product-inference
+      description: |
+        massi can study the documents in the working directory (including the Jupyter notebooks)
+        to identify the 'products' involved in the GIS application
+      expected-outcome: a completed CSV product attributes file (MIAGIS requirement)
+  done: # Completed use cases; don't forget to mention a validation approach
+    - id: UC1
+      tag: base-metadata-inquiry
+      description: massi can iteratively inquire the user to complete the base metadata
+      expected-outcome: a completed JSON base metadata file (MIAGIS requirement)
+      validation: |#md
+        see `_demo/uc1-massi_demo--missing_data.ipynb`
+
+# Supported interface options
+interfaces:
+  # Interfaces to be implemented
+  backlog:
+    - id: IF2
+      tag: jupyter-notebook-magics
+      description: a user should be able to invoke massi through Jupyter magics
+    - id: IF3
+      tag: jupyter-chat-widgets
+      description: a user should be able to communicate to massi thourhg (multiple) dialogue threads
+  doing: []
+  done: 
+    - id: IF1
+      tag: python-library
+      description: a user is able to programmatically interact with massi
