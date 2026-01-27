@@ -1,4 +1,3 @@
-from abc import ABC, abstractmethod
 from typing import Any, TypedDict
 
 from pydantic import BaseModel
@@ -44,16 +43,6 @@ class QueryPlan(DictGetCompatibleModel):
 
 class MetadataUpdate(DictGetCompatibleModel):
     metadata: Metadata
-
-
-# Dependencies
-
-
-class PromptClient(ABC):
-    @abstractmethod
-    def prompt_user(
-        self, queries: list[str] = [], prelude: list[str] = []
-    ) -> list[str]: ...
 
 
 # Langgraph execution states

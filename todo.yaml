@@ -1,24 +1,27 @@
 # List of tasks to complete for the baseline MIAGIS assistant
 use_cases:
-  backlog: # Use cases yet to be implemented
+  backlog:
     - id: UC3
       tag: input-reference-validation
       description: |
         massi can evaluate the consistency and relevance of user provided and inferred information
       expected-outcome: a set of inconsistency flags and improvement suggestions
+      validation: |#md
     - id: UC4
       tag: iterative-refinement
       description: |
         massi supports an ongoing dialogue and iterative value refinement for inquiry-style queries
       expected-outcome: an interaction scheme where a user answer is not a single input but a dialogue
-  doing: # Use cases in progress
+      validation: |#md
+  doing:
     - id: UC2
       tag: used-product-inference
       description: |
         massi can study the documents in the working directory (including the Jupyter notebooks)
         to identify the 'products' involved in the GIS application
       expected-outcome: a completed CSV product attributes file (MIAGIS requirement)
-  done: # Completed use cases; don't forget to mention a validation approach
+      validation: |#md
+  done: # NB: don't forget to mention a validation approach
     - id: UC1
       tag: base-metadata-inquiry
       description: massi can iteratively inquire the user to complete the base metadata
