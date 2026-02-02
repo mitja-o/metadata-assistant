@@ -4,11 +4,11 @@
 MODEL=llama3.2
 
 .PHONY: ollama-start
-ollama-start ollama:
+start-ollama ollama:
 	ollama start
 
 .PHONY: ollama-run-moodel
-ollama-run-model run-model:
+run-ollama-model run-model:
 	ollama run ${MODEL}
 
 # Containerized (dev) runtime
