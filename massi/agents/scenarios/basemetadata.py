@@ -10,7 +10,6 @@ from langchain_core.messages import HumanMessage, SystemMessage
 from langgraph.checkpoint.memory import MemorySaver
 from langgraph.graph import END, START, StateGraph
 
-from massi.agents.interfaces import Dependencies, PromptClient
 import massi.agents.tools as massi_toolkit
 from massi.agents.constructs import (
     BaseMetadataState,
@@ -19,6 +18,7 @@ from massi.agents.constructs import (
     QueryPlan,
     QueryStepId,
 )
+from massi.agents.interfaces import Dependencies, PromptClient
 
 # UC1: Base Metadata
 # ==================
@@ -65,7 +65,9 @@ def ensure_metadata_file_presence(_: BaseMetadataState) -> BaseMetadataState:
 
     n_state = {
         "base_metadata_files": (
-            found_files if found_files else [str(_create_default_metadata())]
+            list(map(str, found_files))
+            if found_files
+            else [str(_create_default_metadata())]
         )
     }
     assert (

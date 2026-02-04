@@ -1,8 +1,10 @@
 from dataclasses import dataclass
+
 from langchain_ollama import ChatOllama
 
-from massi.agents.interfaces import Config, PromptClient
-from massi.agents.scenarios.basemetadata import Dependencies, build_graph
+from massi.agents.interfaces import Config, Dependencies, PromptClient
+import massi.agents.scenarios.basemetadata as uc1_base_metadata
+import massi.agents.scenarios.resources as uc2_resources
 
 
 def create_ollama_llm(config: Config) -> ChatOllama:
@@ -56,6 +58,14 @@ class MassiScenarioFactory:
     # ==================
 
     def base_metadata_graph(self, dependencies: Dependencies | None = None):
-        return build_graph(
+        return uc1_base_metadata.build_graph(
+            dependencies if dependencies else self.default_dependencies()
+        )
+
+    # UC2: Resource Properties
+    # ========================
+
+    def resource_property_graph(self, dependencies: Dependencies | None = None):
+        return uc2_resources.build_graph(
             dependencies if dependencies else self.default_dependencies()
         )

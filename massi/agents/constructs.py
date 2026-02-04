@@ -1,10 +1,10 @@
-from typing import Any, TypedDict
+import getpass as gp
+import pathlib as pl
+from typing import Any, Self, TypedDict
 
-from pydantic import BaseModel
-
-from langgraph.graph import MessagesState
 from langchain_core.messages import AIMessage
-
+from langgraph.graph import MessagesState
+from pydantic import BaseModel
 
 # DTOs
 # ====
@@ -45,10 +45,44 @@ class MetadataUpdate(DictGetCompatibleModel):
     metadata: Metadata
 
 
+class ResourceFile(DictGetCompatibleModel):
+    file_location: str
+    filename: str
+    extension: str
+    author: str | None
+
+    @staticmethod
+    def from_path(p: pl.Path) -> Self:
+        try:
+            author = p.owner()
+        except (KeyError, AttributeError, NotImplementedError):
+            try:
+                author = gp.getuser()
+            except OSError:
+                author = None
+        return ResourceFile(str(p.relative_to(".")), p.name, p.suffix.lower(), author)
+
+
+class GISScoredFile(ResourceFile):
+    gis_relevancy_score: float = 0.0
+
+
+class GISScoringCollection(DictGetCompatibleModel):
+    resources: list[GISScoredFile]
+
+
 # Langgraph execution states
+# ==========================
 
 
-class BaseMetadataState(MessagesState):
+class ResourcePropertyInferenceState(MessagesState, total=False):
+    base_metadata: None | Metadata
+    files: list[ResourceFile]
+    gis_scored_files: GISScoringCollection
+    user_approved: bool
+
+
+class BaseMetadataState(MessagesState, total=False):
     base_metadata_files: list[str]
     selected_base_metadata_file: str
     schema_validation_errors: list[MetadataValidationError]
@@ -62,7 +96,55 @@ class BaseMetadataState(MessagesState):
     original_metadata: None | Metadata
 
 
+# State -> LLM message templates
+# ==============================
+
+
 class MessageBuilder:
+
+    @staticmethod
+    def gis_file_relevancy_score_assessment_request(
+        state: ResourcePropertyInferenceState,
+    ):
+        preamble = (
+            ""
+            if state["base_metadata"] is None
+            else f"""
+Given the current available base metadata of this GIS application:
+
+<metadata>
+{state["base_metadata"]}
+</metadata>
+"""
+        )
+
+        request = """
+These are the files discovered in the working directory:
+
+<file-input>
+{'\n- '.join(map(str,state['files']))}
+</file-input>
+
+Given these files, please assess these files relevancy for to a GIS application.
+Rely on the name, extension, and location of the file.
+Assign the score in range [0.0; 1.0].
+
+Some examples:
+<example-score-derivation>
+- foo.geojson               |=> score: 1.0
+- Makefile                  |=> score: 0.0
+- ./resources/bar.tiff      |=> score: 1.0
+- ./scripts/analysis.py     |=> score: 1.0
+- ./bin/package.py          |=> score: 0.2
+</example-score-derivation>
+
+Please return the list of files preserving all the given attributes.
+For each entry, only add a new attribute corresponding to the required score.
+Adhere to the structured response type provided.
+"""
+
+        return preamble + request
+
     @staticmethod
     def error_validation_system_message(_: BaseMetadataState):
         return """
