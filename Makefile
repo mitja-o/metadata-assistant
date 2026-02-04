@@ -5,6 +5,12 @@ cleanup: pyproject.toml
 	uv run isort massi
 	uv run black massi
 
+.PHONY: clean-cache
+clean-cache: pyproject.toml
+	find . -type d -name "__pycache__" -exec rm -r {} +
+	find . -type f -name "*.pyc" -exec rm -f {} +
+	find . -type f -name "*.pyo" -exec rm -f {} +
+
 .PHONY: check
 check: pyproject.toml
 	uv run mypy massi
