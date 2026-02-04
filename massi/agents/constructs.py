@@ -1,4 +1,5 @@
 import getpass as gp
+import os.path as op
 import pathlib as pl
 from typing import Any, Self, TypedDict
 
@@ -45,7 +46,18 @@ class MetadataUpdate(DictGetCompatibleModel):
     metadata: Metadata
 
 
-class ResourceFile(DictGetCompatibleModel):
+class ResourceFile(BaseModel):
+    """Details of a file that can be identified as a project's resoruce
+
+    Examples:
+        >>> ResourceFile(file_location="bar/foo.txt", filename="foo.txt", extension="txt", author="quack")
+        ResourceFile(file_location='bar/foo.txt', filename='foo.txt', extension='txt', author='quack')
+        >>> import tempfile
+        >>> with tempfile.NamedTemporaryFile() as fp:
+        ...     ResourceFile.from_path(pl.Path(fp.name)) # doctest: +ELLIPSIS
+        ResourceFile(file_location='...', filename='...', extension='...', author='...')
+    """
+
     file_location: str
     filename: str
     extension: str
@@ -60,7 +72,12 @@ class ResourceFile(DictGetCompatibleModel):
                 author = gp.getuser()
             except OSError:
                 author = None
-        return ResourceFile(str(p.relative_to(".")), p.name, p.suffix.lower(), author)
+        return ResourceFile(
+            file_location=str(op.relpath(p)),
+            filename=p.name,
+            extension=p.suffix.lower(),
+            author=author,
+        )
 
 
 class GISScoredFile(ResourceFile):
@@ -107,18 +124,18 @@ class MessageBuilder:
         state: ResourcePropertyInferenceState,
     ):
         preamble = (
-            ""
-            if state["base_metadata"] is None
-            else f"""
+            f"""
 Given the current available base metadata of this GIS application:
 
 <metadata>
 {state["base_metadata"]}
 </metadata>
 """
+            if ("base_metadata" in state and state["base_metadata"])
+            else ""
         )
 
-        request = """
+        request = f"""
 These are the files discovered in the working directory:
 
 <file-input>

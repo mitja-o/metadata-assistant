@@ -18,7 +18,7 @@ def glob_file_search(pattern: str, root: str = "./") -> Iterator[pl.Path]:
     Examples:
         >>> import tempfile as tf
         >>> from pathlib import Path
-        >>> with tf.TemporaryDirectory() as tdn: 
+        >>> with tf.TemporaryDirectory() as tdn:
         ...     tdp = Path(tdn)
         ...     test_file = tdp / "simple-test.test.txt"
         ...     _ = test_file.write_text("test content")

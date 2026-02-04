@@ -2,6 +2,7 @@ from functools import partial
 from typing import Any
 
 from langchain_core.language_models import BaseChatModel
+from langchain_core.messages import HumanMessage
 from langgraph.checkpoint.memory import MemorySaver
 from langgraph.graph import END, START, StateGraph
 
@@ -18,7 +19,7 @@ from massi.agents.tools import walk_working_dir_for_files
 # ========================
 
 
-def scan_directory() -> ResourcePropertyInferenceState:
+def scan_directory(_: ResourcePropertyInferenceState) -> ResourcePropertyInferenceState:
     """
     Walk the current directory and instantiate ResourceFile objects.
     """
@@ -33,7 +34,9 @@ def score_relevancy(
     """
     Pass the list of filenames/extensions to the LLM. The LLM returns a score (0.0 - 1.0) based on GIS signatures (e.g., .shp, .geojson).
     """
-    messages = [MessageBuilder.gis_file_relevancy_score_assessment_request(state)]
+    messages = [
+        HumanMessage(MessageBuilder.gis_file_relevancy_score_assessment_request(state))
+    ]
     response = llm.with_structured_output(GISScoringCollection).invoke(messages)
     return {"messages": messages, "gis_scored_files": response}
 
