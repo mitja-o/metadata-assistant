@@ -1,3 +1,18 @@
+# Dev utilities
+# =============
+.PHONY: cleanup
+cleanup: pyproject.toml
+	uv run isort massi
+	uv run black massi
+
+.PHONY: check
+check: pyproject.toml
+	uv run mypy massi
+
+.PHONY: test
+test: pyproject.toml
+	uv run pytest
+
 # OLLAMA utilities
 # ================
 

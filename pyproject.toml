@@ -16,6 +16,7 @@ dependencies = [
 
 [dependency-groups]
 dev = [
+    "black>=26.1.0",
     "isort>=7.0.0",
     "langgraph-cli[inmem]>=0.4.11",
     "mypy>=1.19.1",
