@@ -11,8 +11,13 @@ dependencies = [
     "langchain>=1.2.0",
     "langchain-community>=0.4.1",
     "langchain-ollama>=1.0.1",
+    "langchain-openai>=1.1.9",
     "langgraph>=1.0.5",
+    "python-dotenv>=1.2.1",
 ]
+
+# [tool.setuptools]
+# package-dir = { "" = "massi" }
 
 [dependency-groups]
 dev = [
@@ -22,10 +27,12 @@ dev = [
     "mypy>=1.19.1",
     "pytest>=9.0.2",
 ]
+observability = ["lmnr[all]>=0.7.40"]
 
 [tool.pytest]
 minversion = "9.0"
 addopts = ["--doctest-modules"]
+testpaths = ["massi"]
 
 [tool.isort]
 profile = "black"

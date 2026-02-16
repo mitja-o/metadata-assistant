@@ -15,8 +15,9 @@ class Config:
         Config(model_url='http://127.0.0.1:11434', model_name='phi4-mini:3.8b')
     """
 
-    model_url: str
     model_name: str
+    model_url: str | None = None
+    api_key: str | None = None
 
 
 class PromptClient(ABC):

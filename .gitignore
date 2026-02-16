@@ -1,3 +1,6 @@
+# Development demo data files
+_demo/data
+
 # Langgraph runtime files
 .langgraph_api
 

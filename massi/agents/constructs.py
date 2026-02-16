@@ -1,7 +1,8 @@
 import getpass as gp
+import operator
 import os.path as op
 import pathlib as pl
-from typing import Any, Self, TypedDict
+from typing import Annotated, Any, Self, TypedDict
 
 from langchain_core.messages import AIMessage
 from langgraph.graph import MessagesState
@@ -84,19 +85,28 @@ class GISScoredFile(ResourceFile):
     gis_relevancy_score: float = 0.0
 
 
-class GISScoringCollection(DictGetCompatibleModel):
-    resources: list[GISScoredFile]
+class GISScoringCollectionResponse(DictGetCompatibleModel):
+    entries: list[GISScoredFile]
+
+
+class GisResourceGroup(DictGetCompatibleModel):
+    resource_name: str
+    entries: list[GISScoredFile]
 
 
 # Langgraph execution states
 # ==========================
 
 
+type GISScoringCollection = list[GISScoredFile]
+
+
 class ResourcePropertyInferenceState(MessagesState, total=False):
     base_metadata: None | Metadata
     files: list[ResourceFile]
-    gis_scored_files: GISScoringCollection
+    gis_scored_files: Annotated[GISScoringCollection, operator.add]
     user_approved: bool
+    gis_resource_groups: list[GisResourceGroup]
 
 
 class BaseMetadataState(MessagesState, total=False):
@@ -155,8 +165,9 @@ Some examples:
 - ./bin/package.py          |=> score: 0.2
 </example-score-derivation>
 
-Please return the list of files preserving all the given attributes.
-For each entry, only add a new attribute corresponding to the required score.
+You MUST preserve and give grade to each given file. 
+DO NOT remove, modify, or otherwise temper any information about the files that was provided.
+The ONLY CHANGE you should do is adding the score attribute `gis_relevancy_score`.
 Adhere to the structured response type provided.
 """
 

@@ -19,6 +19,19 @@ check: pyproject.toml
 test: pyproject.toml
 	uv run pytest
 
+# Developer hints
+# ===============
+
+.PHONY: dev-hint
+dev-hint:
+	@echo "===== OLLAMA ====="
+	@echo "To get Ollama up:       $$ make start-ollama"
+	@echo "To get local models up: $$ make run-model"
+	@echo "\n===== Observability ====="
+	@echo "To get Luminar tracer running: $$ make start-lmnr"
+	@echo "\n===== Notebook ======"
+	@echo "To get the Notebook running: $$ make start-nb"
+
 # OLLAMA utilities
 # ================
 
@@ -31,6 +44,13 @@ start-ollama ollama:
 .PHONY: ollama-run-moodel
 run-ollama-model run-model:
 	ollama run ${MODEL}
+
+# Observability tooling
+# =====================
+
+.PHONY: start-observer-lmnr
+start-observer-lmnr start-luminar start-lmnr: ./utils/lmnr
+	cd utils/lmnr && docker compose up
 
 # Containerized (dev) runtime
 # ===========================

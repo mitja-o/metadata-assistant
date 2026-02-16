@@ -1,4 +1,10 @@
 # List of tasks to complete for the baseline MIAGIS assistant
+configs:
+  statuses:
+    planned: &planned "planned"
+    doing: &doing "doing"
+    finished: &finished "finished"
+
 use_cases:
   backlog:
     - id: UC3
@@ -7,12 +13,15 @@ use_cases:
         massi can evaluate the consistency and relevance of user provided and inferred information
       expected-outcome: a set of inconsistency flags and improvement suggestions
       validation: |#md
+        TBD
     - id: UC4
       tag: iterative-refinement
       description: |
-        massi supports an ongoing dialogue and iterative value refinement for inquiry-style queries
+          massi supports an ongoing dialogue and iterative value refinement for inquiry-style queries
       expected-outcome: an interaction scheme where a user answer is not a single input but a dialogue
       validation: |#md
+        TBD
+
   doing:
     - id: UC2
       tag: used-product-inference
@@ -20,13 +29,56 @@ use_cases:
         massi can study the documents in the working directory (including the Jupyter notebooks)
         to identify the 'products' involved in the GIS application
       expected-outcome: a completed CSV product attributes file (MIAGIS requirement)
+      sub-tasks: 
+        - description: |
+            Scan working directory to inventory all local files (GeoJSON, SHP, TIF) and assign the GIS relevancy scores.
+          status: *finished
+        - description: |
+            Organize the extracted GIS resource files into Resource Description entries:
+            1. For files with embedded metadata, retrieve the metadata to enrich the context.
+            2. Group files that conform to the same 'resource'.
+            3. Given the basic file details (name, author, etc) and metadata, fill in the resource description.
+          notes: |
+            - Use a map-reduce approach?
+            - Group resources by name and translate them into Resource Description entries per group.
+            - Rely on an in-memory database for 'concurrent' resource description generation?
+            - Eventually dump/expose the database?
+          status: *doing
+        - description: |
+            1. Parse Jupyter Notebook cells for remote service URLs (REST endpoints).
+            2. Extract metadata snippets from notebook markdown and code comments to identify 'creator', 'description', and 'geographical_area' context.
+          status: *planned
+        - description: |
+            Organize the extracted script information into Resource Description entries.
+          status: *planned
+        - description: |
+            Validate the produced descriptions for semantic soundness:
+
+            1. Validate 'creator' and 'creator_type' alignment, ensuring 1:1 mapping for multi-entry comma-separated strings as per MIAGIS logic.
+            2. (TBD...)
+          status: *planned
+        - description: |
+            Serialize inferred properties into a tabular CSV format with the mandatory 'resource_name' header.
+          status: *planned
+        - description: |
+            Suggest the user to review the produced resource description table (e.g. using DuckDB).
+          status: *planned
+        - description: |
+            Once user confirms readiness, remove all 'operational' columns and tags, and finalize the resource description.
+          status: *planned
       validation: |#md
+        1. Verify `resource_name` column exists.
+        2. Ensure `alternate_locations` contains valid URLs/paths.
+        3. Check that `creator` and `creator_type` counts match in each row.
+
   done: # NB: don't forget to mention a validation approach
     - id: UC1
       tag: base-metadata-inquiry
       description: massi can iteratively inquire the user to complete the base metadata
       expected-outcome: a completed JSON base metadata file (MIAGIS requirement)
       validation: |#md
+        1. Ensure the metadata file reaches a completion.
+
         see `_demo/uc1-massi_demo--missing_data.ipynb`
 
 # Supported interface options
@@ -44,3 +96,14 @@ interfaces:
     - id: IF1
       tag: python-library
       description: a user is able to programmatically interact with massi
+
+periphery:
+  backlog:
+    - id: P1
+      tag: logger
+      description: use a basic logger instead of 'print' for tracing the progress
+  doing: []
+  done: 
+    - id: P2
+      tag: relay-chat-stunt
+      description: create a basic stunt 'Relay' chat model, to allow manually filling in the answers (like in WOZ)
