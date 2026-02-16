@@ -6,6 +6,7 @@ from typing import Annotated, Any, Self, TypedDict
 
 from langchain_core.messages import AIMessage
 from langgraph.graph import MessagesState
+from pandas import DataFrame
 from pydantic import BaseModel
 
 # DTOs
@@ -91,7 +92,13 @@ class GISScoringCollectionResponse(DictGetCompatibleModel):
 
 class GisResourceGroup(DictGetCompatibleModel):
     resource_name: str
+    """Specific resource identifier."""
+
     entries: list[GISScoredFile]
+    """Individual files connected to the resource."""
+
+    group_score: float
+    """A mean-value score computed from all entries' relevances."""
 
 
 # Langgraph execution states
@@ -107,6 +114,7 @@ class ResourcePropertyInferenceState(MessagesState, total=False):
     gis_scored_files: Annotated[GISScoringCollection, operator.add]
     user_approved: bool
     gis_resource_groups: list[GisResourceGroup]
+    groups_dataframe_file: str
 
 
 class BaseMetadataState(MessagesState, total=False):

@@ -7,7 +7,6 @@ import massi.agents.scenarios.basemetadata as uc1_base_metadata
 import massi.agents.scenarios.resources as uc2_resources
 from massi.agents.interfaces import Config, Dependencies, PromptClient
 
-
 # Chat Model Instances
 # ====================
 

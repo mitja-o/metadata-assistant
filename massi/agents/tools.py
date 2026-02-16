@@ -29,13 +29,6 @@ def glob_file_search(pattern: str, root: str = "./") -> Iterator[pl.Path]:
     return pl.Path(root).resolve().glob(pattern)
 
 
-def walk_working_dir_for_files() -> Iterator[pl.Path]:
-    """
-
-    :return: _description_
-
-    Yields:
-        Iterator[pl.Path]: _description_
-    """
-    paths = glob_file_search("**/*", ".")
+def walk_working_dir_for_files(seed_path: str = ".") -> Iterator[pl.Path]:
+    paths = glob_file_search("**/*", seed_path)
     return filter(lambda p: p.is_file(), paths)

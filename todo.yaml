@@ -37,28 +37,30 @@ use_cases:
             Organize the extracted GIS resource files into Resource Description entries:
             1. For files with embedded metadata, retrieve the metadata to enrich the context.
             2. Group files that conform to the same 'resource'.
-            3. Given the basic file details (name, author, etc) and metadata, fill in the resource description.
+            3. Given the basic file details (name, author, etc), fill in the resource description file.
           notes: |
             - Use a map-reduce approach?
             - Group resources by name and translate them into Resource Description entries per group.
             - Rely on an in-memory database for 'concurrent' resource description generation?
             - Eventually dump/expose the database?
-          status: *doing
+          status: *finished
         - description: |
-            1. Parse Jupyter Notebook cells for remote service URLs (REST endpoints).
-            2. Extract metadata snippets from notebook markdown and code comments to identify 'creator', 'description', and 'geographical_area' context.
-          status: *planned
-        - description: |
-            Organize the extracted script information into Resource Description entries.
+            Retrieve the surrounding resource information to produce metadata.
+
+            1. Ingest information from the data and related artifacts, e.g.
+                1. parse Jupyter Notebook cells for remote service URLs (REST endpoints) and other snippets
+                2. read textual files that describe the process
+                3. retrieve metadata from metadata-infused artifacts
+                4. perform basic data exploration and identify the higher-level patterns/features
+            2. Come up with the relevant fields for the metadata
+            3. Enrich the resource records with metadata
           status: *planned
         - description: |
             Validate the produced descriptions for semantic soundness:
 
             1. Validate 'creator' and 'creator_type' alignment, ensuring 1:1 mapping for multi-entry comma-separated strings as per MIAGIS logic.
-            2. (TBD...)
-          status: *planned
-        - description: |
-            Serialize inferred properties into a tabular CSV format with the mandatory 'resource_name' header.
+            2. Validate sound collection of resource descriptions
+            3. (TBD...)
           status: *planned
         - description: |
             Suggest the user to review the produced resource description table (e.g. using DuckDB).

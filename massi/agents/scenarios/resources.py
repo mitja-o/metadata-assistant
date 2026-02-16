@@ -1,7 +1,8 @@
-from dataclasses import dataclass
 from functools import partial
+from statistics import fmean
 from typing import Any
 
+import pandas as pd
 from langchain_core.language_models import BaseChatModel
 from langchain_core.messages import HumanMessage
 from langgraph.checkpoint.memory import MemorySaver
@@ -24,11 +25,13 @@ from massi.agents.tools import walk_working_dir_for_files
 # ========================
 
 
-def scan_directory(_: ResourcePropertyInferenceState) -> ResourcePropertyInferenceState:
+def scan_directory(
+    _: ResourcePropertyInferenceState, seed_path: str = "."
+) -> ResourcePropertyInferenceState:
     """
     Walk the current directory and instantiate ResourceFile objects.
     """
-    files = walk_working_dir_for_files()
+    files = walk_working_dir_for_files(seed_path)
     gis_files = [ResourceFile.from_path(p) for p in files]
     return {"files": gis_files}
 
@@ -77,40 +80,61 @@ def group_resources(
     for f in scored_gis_files:
         resource_groups.setdefault(f.filename.split(".")[0], []).append(f)
     gis_resource_groups = [
-        GisResourceGroup(resource_name=k, entries=v) for k, v in resource_groups.items()
+        GisResourceGroup(resource_name=k, entries=vs, group_score=gs)
+        for k, vs in resource_groups.items()
+        if (gs := fmean((v.gis_relevancy_score for v in vs)))
     ]
     return {"gis_resource_groups": gis_resource_groups}
 
 
-# def map_resources_to_descriptions(state: ResourcePropertyInferenceState) -> ResourcePropertyInferenceState:
+def resources_to_description_file(
+    state: ResourcePropertyInferenceState,
+    destination_file: str = "resource_properties.csv",
+) -> ResourcePropertyInferenceState:
+    groups = [g.model_dump() for g in state["gis_resource_groups"]]
+    groupds_df = pd.DataFrame.from_records(groups)
+    groupds_df.to_csv(destination_file, index=False)
+    return {"groups_dataframe_file": destination_file}
 
 
-@dataclass
-class ResourceWorkflowSettings:
-    chunk_file_limit: int
-
-
-def build_graph(dependencies: Dependencies, settings: ResourceWorkflowSettings = None):
+def build_graph(dependencies: Dependencies):
     llm = dependencies.llm_client
 
     n: Any = None
     builder = StateGraph(ResourcePropertyInferenceState)
-    builder.add_node(n.__name__, n) if (n := scan_directory) else ...
+    (
+        builder.add_node(n.__name__, np)
+        # FIXME(configurability): make the seed path (data directory) configurable externally
+        if (n := scan_directory) and (np := partial(n, seed_path="./data"))
+        else ...
+    )
     (
         builder.add_node(n.__name__, np)
         if (n := score_relevancy) and (np := partial(n, llm=llm))
         else ...
     )
     builder.add_node(n.__name__, n) if (n := group_resources) else ...
+    (
+        builder.add_node(n.__name__, np)
+        if (n := resources_to_description_file)
+        # FIXME(configurability): make the resource destination file configurable externally
+        and (np := partial(n, destination_file="resource_properties.csv"))
+        else ...
+    )
 
     builder.add_edge(START, scan_directory.__name__)
     builder.add_conditional_edges(
         scan_directory.__name__,
-        partial(prepare_naive_score_batches, chunk_file_limit=10),
+        partial(
+            prepare_naive_score_batches,
+            # FIXME(configurability): make the chunk size configurable externally
+            chunk_file_limit=15,
+        ),
         [score_relevancy.__name__],
     )
     builder.add_edge(score_relevancy.__name__, group_resources.__name__)
-    builder.add_edge(group_resources.__name__, END)
+    builder.add_edge(group_resources.__name__, resources_to_description_file.__name__)
+    builder.add_edge(resources_to_description_file.__name__, END)
 
     memory = MemorySaver()
     return builder.compile(checkpointer=memory)

@@ -1,5 +1,7 @@
 # Development demo data files
 _demo/data
+_validation/data
+.tmp
 
 # Langgraph runtime files
 .langgraph_api
