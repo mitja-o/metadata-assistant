@@ -1,0 +1,3 @@
+[submodule "utils/lmnr"]
+	path = utils/lmnr
+	url = git@github.com:lmnr-ai/lmnr.git
