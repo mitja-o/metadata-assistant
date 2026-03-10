@@ -1,7 +1,7 @@
 # Dev utilities
 # =============
-.PHONY: cleanup
-cleanup: pyproject.toml
+.PHONY: format
+format: pyproject.toml
 	uv run isort massi
 	uv run black massi
 
