@@ -10,9 +10,9 @@ class Config:
 
     Examples:
         >>> Config(**{"model_url": "http://host.docker.internal:11434", "model_name": "granite4:3b"})
-        Config(model_url='http://host.docker.internal:11434', model_name='granite4:3b')
+        Config(model_name='granite4:3b', model_url='http://host.docker.internal:11434', api_key=None)
         >>> Config(**dict(model_url="http://127.0.0.1:11434", model_name="phi4-mini:3.8b"))
-        Config(model_url='http://127.0.0.1:11434', model_name='phi4-mini:3.8b')
+        Config(model_name='phi4-mini:3.8b', model_url='http://127.0.0.1:11434', api_key=None)
     """
 
     model_name: str

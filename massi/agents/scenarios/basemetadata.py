@@ -26,6 +26,8 @@ from massi.agents.interfaces import Dependencies, PromptClient
 
 class Defaults:
     base_metadata_file = "base_metadata.json"
+    # Adapted from MIAGIS JSON Schema
+    # @see: https://moseleybioinformaticslab.github.io/miagis/jsonschema.html
     base_metadata_json_schema = {
         "$schema": "https://json-schema.org/draft/2020-12/schema",
         "type": "object",

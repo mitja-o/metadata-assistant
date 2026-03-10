@@ -102,6 +102,34 @@ class GisResourceGroup(DictGetCompatibleModel):
     """A mean-value score computed from all entries' relevances."""
 
 
+class GroupedGisResourceFile(GISScoredFile):
+    resource_name: str
+    group_score: float
+
+
+def flatten_resource_groups(
+    groups: list[GisResourceGroup],
+) -> list[GroupedGisResourceFile]:
+    """Flatten the files grouped by resources into individual entries
+
+    Args:
+        groups (list[GisResourceGroup]): scored resource groups
+
+    Returns:
+        list[GroupedGisResourceFile]: indivudual entries preserving assigned group details
+
+    Examples:
+        >>> groups = [GisResourceGroup(resource_name="test", group_score=0.2, entries=[GISScoredFile(gis_relevancy_score=0.2, file_location="test.csv", filename="test", extension="csv", author="tester")])]
+        >>> flatten_resource_groups(groups)
+        [GroupedGisResourceFile(file_location='test.csv', filename='test', extension='csv', author='tester', gis_relevancy_score=0.2, resource_name='test', group_score=0.2)]
+    """
+    return [
+        GroupedGisResourceFile(**g.model_dump(), **e.model_dump())
+        for g in groups
+        for e in g.entries
+    ]
+
+
 # Langgraph execution states
 # ==========================
 
@@ -115,7 +143,8 @@ class ResourcePropertyInferenceState(MessagesState, total=False):
     gis_scored_files: Annotated[GISScoringCollection, operator.add]
     user_approved: bool
     gis_resource_groups: list[GisResourceGroup]
-    groups_dataframe_file: str
+    grouped_resource_entries: list[GroupedGisResourceFile]
+    resource_dataframe_file: str
 
 
 class BaseMetadataState(MessagesState, total=False):

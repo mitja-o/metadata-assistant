@@ -3,26 +3,97 @@ from statistics import fmean
 from typing import Any
 
 import pandas as pd
+from jsonschema.validators import Draft202012Validator
 from langchain_core.language_models import BaseChatModel
 from langchain_core.messages import HumanMessage
 from langgraph.checkpoint.memory import MemorySaver
-from langgraph.constants import Send
 from langgraph.graph import END, START, StateGraph
+from langgraph.types import Send
 
 # Local library implementing business-logic and project-subjective structures.
 from massi.agents.constructs import (
     GisResourceGroup,
+    GISScoredFile,
     GISScoringCollection,
     GISScoringCollectionResponse,
+    GroupedGisResourceFile,
     MessageBuilder,
     ResourceFile,
     ResourcePropertyInferenceState,
+    flatten_resource_groups,
 )
 from massi.agents.interfaces import Dependencies
 from massi.agents.tools import walk_working_dir_for_files
 
 # UC2: Resource Properties
 # ========================
+
+
+class Defaults:
+    # FIXME(configurability): make the seed path (data directory) configurable externally
+    seed_path = "./data"
+    # FIXME(configurability): make the resource destination file configurable externally
+    destination_file = "resource_properties.csv"
+    # FIXME(configurability): make the chunk size configurable externally
+    chunk_file_limit = 15
+
+    # Adapted from MIAGIS JSON Schema
+    # @see: https://moseleybioinformaticslab.github.io/miagis/jsonschema.html
+    resource_properties_metadata_json_schema = {
+        "$schema": "https://json-schema.org/draft/2020-12/schema",
+        "type": "object",
+        "properties": {
+            "location": {"type": "string", "minLength": 1},
+            "alternate_locations": {
+                "type": "array",
+                "items": {"type": "string", "minLength": 1},
+                "minItems": 1,
+            },
+            "type": {"type": "string", "minLength": 1},
+            "fairness": {"type": "string", "pattern": "(?i)^f?a?i?r?$"},
+            "format": {"type": "string", "minLength": 1},
+            "schema": {"type": ["string", "object"], "minLength": 1},
+            "sources": {"type": "array", "items": {"type": "string", "minLength": 1}},
+            "description": {"type": "string", "minLength": 1},
+            "creator": {
+                "type": "array",
+                "minItems": 1,
+                "items": {
+                    "type": "object",
+                    "properties": {
+                        "name": {"type": "string", "minLength": 1},
+                        "type": {
+                            "type": "string",
+                            "minLength": 1,
+                            "enum": ["URL", "organization", "author", "DOI"],
+                        },
+                    },
+                    "required": ["name", "type"],
+                },
+            },
+            "spatial_metadata": {  # Addition inspired on ISO-19115
+                "type": "object",
+                "properties": {
+                    "bbox": {
+                        "type": "array",
+                        "items": {"type": "number"},
+                        "minItems": 4,
+                        "maxItems": 4,
+                        "description": "[min_lon, min_lat, max_lon, max_lat]",
+                    },
+                    "crs": {"type": "string", "default": "EPSG:4326"},
+                    "update_frequency": {
+                        "type": "string",
+                        "enum": ["daily", "monthly", "annually", "as_needed", "static"],
+                    },
+                },
+            },
+        },
+        "required": ["location", "type", "fairness", "format", "description"],
+    }
+    resource_properties_metadata_json_schema_validator = Draft202012Validator(
+        resource_properties_metadata_json_schema
+    )
 
 
 def scan_directory(
@@ -91,10 +162,14 @@ def resources_to_description_file(
     state: ResourcePropertyInferenceState,
     destination_file: str = "resource_properties.csv",
 ) -> ResourcePropertyInferenceState:
-    groups = [g.model_dump() for g in state["gis_resource_groups"]]
-    groupds_df = pd.DataFrame.from_records(groups)
-    groupds_df.to_csv(destination_file, index=False)
-    return {"groups_dataframe_file": destination_file}
+    groups = state["gis_resource_groups"]
+    entries = flatten_resource_groups(groups)
+    entries_ef = pd.DataFrame.from_records([e.model_dump() for e in entries])
+    entries_ef.to_csv(destination_file, index=False)
+    return {
+        "grouped_resource_entries": entries,
+        "resource_dataframe_file": destination_file,
+    }
 
 
 def build_graph(dependencies: Dependencies):
@@ -104,8 +179,7 @@ def build_graph(dependencies: Dependencies):
     builder = StateGraph(ResourcePropertyInferenceState)
     (
         builder.add_node(n.__name__, np)
-        # FIXME(configurability): make the seed path (data directory) configurable externally
-        if (n := scan_directory) and (np := partial(n, seed_path="./data"))
+        if (n := scan_directory) and (np := partial(n, seed_path=Defaults.seed_path))
         else ...
     )
     (
@@ -117,8 +191,7 @@ def build_graph(dependencies: Dependencies):
     (
         builder.add_node(n.__name__, np)
         if (n := resources_to_description_file)
-        # FIXME(configurability): make the resource destination file configurable externally
-        and (np := partial(n, destination_file="resource_properties.csv"))
+        and (np := partial(n, destination_file=Defaults.destination_file))
         else ...
     )
 
@@ -126,9 +199,7 @@ def build_graph(dependencies: Dependencies):
     builder.add_conditional_edges(
         scan_directory.__name__,
         partial(
-            prepare_naive_score_batches,
-            # FIXME(configurability): make the chunk size configurable externally
-            chunk_file_limit=15,
+            prepare_naive_score_batches, chunk_file_limit=Defaults.chunk_file_limit
         ),
         [score_relevancy.__name__],
     )
