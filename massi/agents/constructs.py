@@ -6,7 +6,6 @@ from typing import Annotated, Any, Self, TypedDict
 
 from langchain_core.messages import AIMessage
 from langgraph.graph import MessagesState
-from pandas import DataFrame
 from pydantic import BaseModel
 
 # DTOs
@@ -23,6 +22,8 @@ class MetadataValidationError(TypedDict):
 type QueryStepId = int
 type QueryPrompt = str
 type Metadata = dict
+type QueryPlanDict = dict
+type MetadataUpdateDict = dict
 
 
 class DictGetCompatibleModel(BaseModel):
@@ -122,12 +123,12 @@ class BaseMetadataState(MessagesState, total=False):
     selected_base_metadata_file: str
     schema_validation_errors: list[MetadataValidationError]
     errors_summary: AIMessage
-    query_plan: QueryPlan
+    query_plan: QueryPlanDict
     query_plan_completed: bool
     current_step_pointer: None | int
     current_query_prompt: None | QueryPrompt
     current_query_response: None | str
-    updated_metadata: None | Metadata
+    updated_metadata: None | MetadataUpdateDict
     original_metadata: None | Metadata
 
 
@@ -261,10 +262,12 @@ Here are the provided details:
 {response}
 </user-response>
 
+The attributes already present in the current metadata MUST be preserved, only append new attribute from the query and response above.
+
 (c)
 <current-metadata>
 {metadata}
 </current-metadata>
 
-In your response, you MUST only report the final metadata file, after performing all the required updates above.
+In your response, you MUST only report the final metadata file, with the added metadata attributes.
 """

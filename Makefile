@@ -35,7 +35,7 @@ dev-hint:
 # OLLAMA utilities
 # ================
 
-MODEL=llama3.2
+MODEL=lfm2.5-thinking
 
 .PHONY: ollama-start
 start-ollama ollama:
@@ -52,6 +52,10 @@ run-ollama-model run-model:
 start-observer-lmnr start-luminar start-lmnr: ./utils/lmnr
 	cd utils/lmnr && docker compose up
 
+.PHONY: check-lmnr-frontend-port
+check-lmnr-frontend-port: ./utils/lmnr
+	docker container inspect -f '{{.NetworkSettings.Ports}}' lmnr-frontend-1
+
 # Containerized (dev) runtime
 # ===========================
 
@@ -65,7 +69,7 @@ start-notebook start-nb:
 stop: docker-compose.yaml
 	docker compose down
 
-.PHONY: list-jupyter
+.PHONY: list-jupyterd
 list-jupyter:
 	docker exec $(NB_CONTAINER_NAME) jupyter server list
 

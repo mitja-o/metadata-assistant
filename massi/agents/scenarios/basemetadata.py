@@ -98,7 +98,7 @@ def check_metadata_completion(state: BaseMetadataState) -> BaseMetadataState:
             )
         ]
         or [],
-        "original_metadata": MetadataUpdate(metadata=base_metadata),
+        "original_metadata": base_metadata,
     }
 
 
@@ -130,7 +130,7 @@ def plan_user_query(
         SystemMessage(MessageBuilder.error_resolution_planning_system_message(state)),
         HumanMessage(MessageBuilder.error_to_model_request(state)),
     ]
-    response = llm.with_structured_output(QueryPlan).invoke(messages)
+    response = llm.with_structured_output(QueryPlan).invoke(messages).model_dump()
     return {
         "messages": messages,
         "query_plan": response,
@@ -331,7 +331,7 @@ def register_user_query_response(
         with open(state["selected_base_metadata_file"], "w") as bmf:
             json.dump(update.metadata, bmf)
 
-    return {"updated_metadata": update, "messages": messages}
+    return {"updated_metadata": update.model_dump(), "messages": messages}
 
 
 def build_graph(dependencies: Dependencies):
