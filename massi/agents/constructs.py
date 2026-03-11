@@ -2,6 +2,7 @@ import getpass as gp
 import operator
 import os.path as op
 import pathlib as pl
+from enum import Enum
 from typing import Annotated, Any, Self, TypedDict
 
 from langchain_core.messages import AIMessage
@@ -10,6 +11,12 @@ from pydantic import BaseModel
 
 # DTOs
 # ====
+
+
+# TODO(upstream-issue): enums don't work well with Langgraph's rendering
+class QueryPlanExecutionState(Enum):
+    STOP = 0
+    ACT = 1
 
 
 class MetadataValidationError(TypedDict):
@@ -238,11 +245,11 @@ You given the missing attributes specified as JSON schema validation errors, des
 You should guide the users to be elaborate and non-ambiguous. Please rely on the fact that the data we are describing is used for GIS. Reflect this in the query you direct at the user.
 
 The query plan should be an ordered sequence of queries you would like to ask to the data creator.
-Example query plan can be: 
+Example query plan is: 
 <example>
 {"queries": {
-    1: {"id": 1, "key": "unique-id", "json_path": "$.id", "priority": 5, "query": "Please provide a unique identifier for this data entry."},
-    2: {"id": 2, "key": "final-outcomes", "json_path": "$.outcomes", "priority": 4, "query": "Please list all reusable outcomes of your data project. Think what is useful to know to the future users of your data."},
+    1: {"id": 1, "key": "id", "json_path": "$.id", "priority": 5, "query": "Please provide a unique identifier for this data entry."},
+    2: {"id": 2, "key": "outcomes", "json_path": "$.outcomes", "priority": 4, "query": "Please list all reusable outcomes of your data project. Think what is useful to know to the future users of your data."},
     # and so on ... 
 }}
 </example>
@@ -253,10 +260,10 @@ You MUST respond with a JSON-structure with the following format:
 {"queries": [
     {
         "id": <natural number ID to uniquely identify the step>
-        "key": <brief identifier of the purpose of the query, should be written in snake case: e.g. foo_baz>
-        "json_path": <path of the json property that this query intends to complete>,
+        "key": <identifier of the attribute that needs to be filled in. e.g. in a json path '$.foo.baz', the `key` is 'baz'>
+        "json_path": <path of the json property that this query intends to complete, e.g. '$.foo.baz'>,
         "priority": <integer value from 0 to 5 indicating how high is the priority of this query, 5 - needs to be asked as soon as possible, 0 - can be asked later>,
-        "query": <short but clear and sufficient human-readable query aimed to retrieve the value for the given key_path attribute in the error>
+        "query": <short but sufficiently clear and human-readable query aimed to retrieve the value for the given key_path attribute in the error from an interviewee, it should be elaborate enough to guide the interviewee to provide a clear and comprehensive response>
     }
 ]}
 </format>
@@ -299,4 +306,5 @@ The attributes already present in the current metadata MUST be preserved, only a
 </current-metadata>
 
 In your response, you MUST only report the final metadata file, with the added metadata attributes.
+For example, if the <query-details> request input for an attribute `description`, and the <user-response> is `this is my response`, the updated metadata should contain contain a new attribute: `{{"description": "this is my response", <remaining attributes are unchanged>}}.
 """

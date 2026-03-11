@@ -1,3 +1,4 @@
+import warnings
 from functools import partial
 from statistics import fmean
 from typing import Any
@@ -13,11 +14,10 @@ from langgraph.types import Send
 # Local library implementing business-logic and project-subjective structures.
 from massi.agents.constructs import (
     GisResourceGroup,
-    GISScoredFile,
     GISScoringCollection,
     GISScoringCollectionResponse,
-    GroupedGisResourceFile,
     MessageBuilder,
+    QueryPlanExecutionState,
     ResourceFile,
     ResourcePropertyInferenceState,
     flatten_resource_groups,
@@ -172,6 +172,53 @@ def resources_to_description_file(
     }
 
 
+# Query Planning and Execution
+# ~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+
+def plan_metadata_inference(
+    state: ResourcePropertyInferenceState, llm: BaseChatModel | None = None
+) -> ResourcePropertyInferenceState:
+    # FIXME: implement
+    warnings.warn("Planning is not yet implemented", RuntimeWarning)
+    return state
+
+
+def pull_next_metadata_inference_step(
+    state: ResourcePropertyInferenceState,
+) -> ResourcePropertyInferenceState:
+    # FIXME: implement
+    warnings.warn("Metadata inference execution is not yet implemented", RuntimeWarning)
+    return state
+
+
+def execute_metadata_inference_step(
+    state: ResourcePropertyInferenceState, llm: BaseChatModel | None = None
+) -> ResourcePropertyInferenceState:
+    # FIXME: implement
+    warnings.warn("Metadata inference is not yet implemented", RuntimeWarning)
+    return state
+
+
+def register_metadata_inference_step(
+    state: ResourcePropertyInferenceState, llm: BaseChatModel | None = None
+) -> ResourcePropertyInferenceState:
+    # FIXME: implement
+    warnings.warn("Metadata inference is not yet implemented", RuntimeWarning)
+    return state
+
+
+def is_query_plan_completed(
+    state: ResourcePropertyInferenceState,
+) -> QueryPlanExecutionState:
+    # FIXME: implement
+    warnings.warn("Metadata inference is not yet implemented", RuntimeWarning)
+    return QueryPlanExecutionState.STOP
+
+
+# ~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+
 def build_graph(dependencies: Dependencies):
     llm = dependencies.llm_client
 
@@ -194,6 +241,22 @@ def build_graph(dependencies: Dependencies):
         and (np := partial(n, destination_file=Defaults.destination_file))
         else ...
     )
+    (
+        builder.add_node(n.__name__, np)
+        if (n := plan_metadata_inference) and (np := partial(n, llm=llm))
+        else ...
+    )
+    builder.add_node(n.__name__, n) if (n := pull_next_metadata_inference_step) else ...
+    (
+        builder.add_node(n.__name__, np)
+        if (n := execute_metadata_inference_step) and (np := partial(n, llm=llm))
+        else ...
+    )
+    (
+        builder.add_node(n.__name__, np)
+        if (n := register_metadata_inference_step) and (np := partial(n, llm=llm))
+        else ...
+    )
 
     builder.add_edge(START, scan_directory.__name__)
     builder.add_conditional_edges(
@@ -205,7 +268,30 @@ def build_graph(dependencies: Dependencies):
     )
     builder.add_edge(score_relevancy.__name__, group_resources.__name__)
     builder.add_edge(group_resources.__name__, resources_to_description_file.__name__)
-    builder.add_edge(resources_to_description_file.__name__, END)
+    builder.add_edge(
+        resources_to_description_file.__name__, plan_metadata_inference.__name__
+    )
+    builder.add_edge(
+        plan_metadata_inference.__name__, pull_next_metadata_inference_step.__name__
+    )
+    builder.add_edge(
+        pull_next_metadata_inference_step.__name__,
+        execute_metadata_inference_step.__name__,
+    )
+
+    builder.add_edge(
+        execute_metadata_inference_step.__name__,
+        register_metadata_inference_step.__name__,
+    )
+    builder.add_conditional_edges(
+        register_metadata_inference_step.__name__,
+        is_query_plan_completed,
+        {
+            # FIXME(upstream-issue): when rendering mermaid, this should be wrapped in `"` because `.` in the key breaks mermaid rendering
+            QueryPlanExecutionState.STOP: END,
+            QueryPlanExecutionState.ACT: pull_next_metadata_inference_step.__name__,
+        },
+    )
 
     memory = MemorySaver()
     return builder.compile(checkpointer=memory)

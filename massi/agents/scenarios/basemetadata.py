@@ -1,6 +1,5 @@
 import json
 import pathlib as pl
-from enum import Enum
 from functools import partial
 from typing import Any
 
@@ -16,6 +15,7 @@ from massi.agents.constructs import (
     MessageBuilder,
     MetadataUpdate,
     QueryPlan,
+    QueryPlanExecutionState,
     QueryStepId,
 )
 from massi.agents.interfaces import Dependencies, PromptClient
@@ -47,12 +47,6 @@ class Defaults:
     base_metadata_json_schema_validator = Draft202012Validator(
         base_metadata_json_schema
     )
-
-
-# TODO(upstream-issue): enums don't work well with Langgraph's rendering
-class QueryPlanExecutionState(Enum):
-    STOP = 0
-    ACT = 1
 
 
 def _create_default_metadata() -> pl.Path:
