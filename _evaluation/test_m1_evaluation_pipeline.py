@@ -10,24 +10,27 @@ from langgraph.graph.state import CompiledStateGraph
 
 
 class Defaults:
-    agent_config = Config(
+    massi_config = Config(
         **{
-            "model_url": "http://host.docker.internal:11434",
+            "model_url": "http://0.0.0.0:11434",
             "model_name": "granite4:3b",
         }
     )
 
-    input_paper = "./papers/p1-a-geospatial-and-binomial-logistic-regression.pdf"
+    # WARN: this evaluation script should be run from the project's root directory
+    input_paper = (
+        "./_evaluation/papers/p1-a-geospatial-and-binomial-logistic-regression.pdf"
+    )
     author_agent_configs = {
         "embedding": Config(
             **{
-                "model_url": "http://host.docker.internal:11434",
+                "model_url": "http://0.0.0.0:11434",
                 "model_name": "qwen3-embedding:0.6b",
             }
         ),
         "chat": Config(
             **{
-                "model_url": "http://host.docker.internal:11434",
+                "model_url": "http://0.0.0.0:11434",
                 "model_name": "lfm2.5-thinking:latest",
             }
         ),
@@ -71,11 +74,13 @@ def base_metadata_file_name(tmp_path_factory):
     return fn
 
 
+# TODO: add lmnr observability
 def test_empty_metadata(base_metadata_file_name):
     og_metadata = Defaults.input_base_metadata
     metadata = mask_keys(og_metadata, og_metadata.keys())
     metadata_path = write_metadata(base_metadata_file_name, metadata)
 
+    print(metadata_path)
     author_proxy = create_author_agent(
         Defaults.input_paper,
         Defaults.author_agent_configs["embedding"],
@@ -88,7 +93,7 @@ def test_empty_metadata(base_metadata_file_name):
         working_directory=str(metadata_path.parent),
     )
 
-    factory = MassiScenarioFactory(Defaults.config)
+    factory = MassiScenarioFactory(Defaults.massi_config)
     graph = factory.base_metadata_graph(dependencies=deps)
 
     stream_until_iterruption(graph)
