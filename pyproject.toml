@@ -26,6 +26,9 @@ dev = [
     "mypy>=1.19.1",
     "pytest>=9.0.2",
 ]
+experiments = [
+    "pypdf>=6.8.0",
+]
 observability = ["lmnr[all]>=0.7.40"]
 sandbox = ["duckdb>=1.4.4"]
 

@@ -123,7 +123,9 @@ def plan_user_query(
 ) -> BaseMetadataState:
     messages = [
         state["errors_summary"],
-        SystemMessage(MessageBuilder.error_resolution_planning_system_message(state)),
+        SystemMessage(
+            MessageBuilder.base_metadata_error_resolution_planning_system_message(state)
+        ),
         HumanMessage(MessageBuilder.error_to_model_request(state)),
     ]
     response = llm.with_structured_output(QueryPlan).invoke(messages).model_dump()

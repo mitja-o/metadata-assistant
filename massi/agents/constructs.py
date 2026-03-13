@@ -235,7 +235,7 @@ Here are the received JSON schema validation errors:
 """
 
     @staticmethod
-    def error_resolution_planning_system_message(_: BaseMetadataState):
+    def base_metadata_error_resolution_planning_system_message(_: BaseMetadataState):
         return """
 You are an experienced data steward collecting the base metadata for a MIAGIS file.
 MIAGIS files organise the metadata for geospatial (GIS) data depositories.
@@ -245,6 +245,8 @@ You given the missing attributes specified as JSON schema validation errors, des
 You should guide the users to be elaborate and non-ambiguous. Please rely on the fact that the data we are describing is used for GIS. Reflect this in the query you direct at the user.
 
 The query plan should be an ordered sequence of queries you would like to ask to the data creator.
+The order should allow for growth of contextual information. 
+The earlier questions focusing on most atomic (or basic) details, the later should focus on most elaborate and free-form information.
 Example query plan is: 
 <example>
 {"queries": {
@@ -280,7 +282,7 @@ MIAGIS files organise the metadata for geospatial (GIS) data depositories.
 Base metadata provides an overview of the overall project.
 
 Given (a) the query for a missing piece of the metadata, (b) the user-provided response, and (c) current metadata file, you should:
-1. Check the (b) user response quality and, if necessary, rephrase it to a most appropriate formulation according to the nature of (a).
+1. Check the (b) user response quality and, if necessary, rephrase it to a most appropriate formulation according to the nature of (a) and contents of (c).
 2. Identify where in the (c) current metadata file the response fits according to the details of (a).
 3. Update the (c) metadata file by adding the (b, rephrased after step 1.) improved user response as a field described by (a).
 

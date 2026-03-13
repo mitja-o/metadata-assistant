@@ -1,5 +1,6 @@
 # Development demo data files
 _demo/data
+_demo/papers
 _validation/data
 .tmp
 
