@@ -55,9 +55,13 @@ def _create_default_metadata() -> pl.Path:
     return default_path
 
 
-def ensure_metadata_file_presence(_: BaseMetadataState) -> BaseMetadataState:
+def ensure_metadata_file_presence(
+    _: BaseMetadataState, root_dir: str = "."
+) -> BaseMetadataState:
     n_state = {}
-    found_files = massi_toolkit.glob_file_search(f"**/{Defaults.base_metadata_file}")
+    found_files = massi_toolkit.glob_file_search(
+        f"**/{Defaults.base_metadata_file}", root_dir
+    )
 
     n_state = {
         "base_metadata_files": (
@@ -338,7 +342,12 @@ def build_graph(dependencies: Dependencies):
 
     n: Any = None
     builder = StateGraph(BaseMetadataState)
-    builder.add_node(n.__name__, n) if (n := ensure_metadata_file_presence) else ...
+    (
+        builder.add_node(n.__name__, np)
+        if (n := ensure_metadata_file_presence)
+        and (np := partial(n, dependencies.working_directory))
+        else ...
+    )
     builder.add_node(n.__name__, n) if (n := select_working_base_metadata_file) else ...
     builder.add_node(n.__name__, n) if (n := check_metadata_completion) else ...
     (

@@ -6,19 +6,22 @@ from typing import TypedDict
 from langchain.chat_models import BaseChatModel
 from langchain.messages import HumanMessage
 from langchain_community.document_loaders import PyPDFLoader
+from langchain_core.documents import Document
 from langchain_core.retrievers import BaseRetriever
 from langchain_core.vectorstores import InMemoryVectorStore
 from langchain_ollama import ChatOllama, OllamaEmbeddings
 from langchain_text_splitters import RecursiveCharacterTextSplitter
+from langgraph.graph.state import CompiledStateGraph
 from langgraph.graph import END, START, StateGraph
 
-from massi.agents.interfaces import Config
+from massi.agents.interfaces import Config, PromptClient
 
 # Workflow State
 # --------------
 
 
 class AuthorAgentState(TypedDict):
+    paper_summary: str
     question: str
     context: str
     answer: str
@@ -28,10 +31,12 @@ class AuthorAgentState(TypedDict):
 class Dependencies:
     llm_client: BaseChatModel
     retriever: BaseRetriever
+    document_chunks: list[Document]
 
 
 # Workflow Nodes
 # --------------
+# TODO: consider adding an extra node to produce a paper summary for extended context.
 
 
 def retrieve_content(state: AuthorAgentState, deps: Dependencies) -> AuthorAgentState:
@@ -52,18 +57,20 @@ def generate_response(state: AuthorAgentState, deps: Dependencies) -> AuthorAgen
 # -------------------
 
 
-def setup_author_proxy_components(
-    pdf_path: Path, embedding_config: Config, chat_config: Config
-) -> Dependencies:
+def load_document_chunks(pdf_path: Path) -> list[Document]:
     loader = PyPDFLoader(pdf_path)
     docs = loader.load()
     text_splitter = RecursiveCharacterTextSplitter(chunk_size=1000, chunk_overlap=100)
-    splits = text_splitter.split_documents(docs)
+    return text_splitter.split_documents(docs)
 
+
+def setup_author_proxy_components(
+    document_chunks: list[Document], embedding_config: Config, chat_config: Config
+) -> Dependencies:
     embeddings = OllamaEmbeddings(
         model=embedding_config.model_name, base_url=embedding_config.model_url
     )
-    vectorstore = InMemoryVectorStore.from_documents(splits, embeddings)
+    vectorstore = InMemoryVectorStore.from_documents(document_chunks, embeddings)
     retriever = vectorstore.as_retriever()
 
     author_system_msg = (
@@ -80,7 +87,7 @@ def setup_author_proxy_components(
         system=author_system_msg,
     )
 
-    return Dependencies(llm, retriever)
+    return Dependencies(llm, retriever, document_chunks)
 
 
 def build_author_workflow(deps: Dependencies):
@@ -96,6 +103,26 @@ def build_author_workflow(deps: Dependencies):
     return workflow.compile()
 
 
+# Agent entrypoints
+# -----------------
+
+type AuthorAgent = CompiledStateGraph[
+    AuthorAgentState, None, AuthorAgentState, AuthorAgentState
+]
+
+
 def create_author_agent(pdf_path: Path, embedding_config: Config, chat_config: Config):
-    deps = setup_author_proxy_components(pdf_path, embedding_config, chat_config)
-    return build_author_workflow(deps)
+    document_chunks = load_document_chunks(pdf_path)
+    deps = setup_author_proxy_components(document_chunks, embedding_config, chat_config)
+    return build_author_workflow(deps), deps
+
+
+class AuthorAgentProxyPrompt(PromptClient):
+    def __init__(self, agent: AuthorAgent):
+        self.agent = agent
+
+    def prompt_user(
+        self, queries: list[str] = [], prelude: list[str] = []
+    ) -> list[str]:
+        questions = [f"{'.'.join(prelude)}: {q}" "" for q in queries]
+        return [self.agent.invoke({"question": q})["answer"] for q in questions]

@@ -31,3 +31,4 @@ class PromptClient(ABC):
 class Dependencies:
     llm_client: BaseChatModel | None = None
     prompt_client: PromptClient | None = None
+    working_directory: str = "."
