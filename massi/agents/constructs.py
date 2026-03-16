@@ -244,7 +244,7 @@ Base metadata provides an overview of the overall project.
 You given the missing attributes specified as JSON schema validation errors, design the interview plan to retrieve the missing information from the user.
 You should guide the users to be elaborate and non-ambiguous. Please rely on the fact that the data we are describing is used for GIS. Reflect this in the query you direct at the user.
 
-The query plan should be an ordered sequence of queries you would like to ask to the data creator.
+The query plan should be an ordered sequence (stack, first-in-first-out) of queries you would like to ask to the data creator.
 The order should allow for growth of contextual information. 
 The earlier questions focusing on most atomic (or basic) details, the later should focus on most elaborate and free-form information.
 Example query plan is: 

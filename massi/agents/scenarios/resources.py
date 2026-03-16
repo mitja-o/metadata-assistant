@@ -294,4 +294,4 @@ def build_graph(dependencies: Dependencies):
     )
 
     memory = MemorySaver()
-    return builder.compile(checkpointer=memory)
+    return builder.compile(checkpointer=memory), dict()

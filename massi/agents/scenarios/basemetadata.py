@@ -345,7 +345,7 @@ def build_graph(dependencies: Dependencies):
     (
         builder.add_node(n.__name__, np)
         if (n := ensure_metadata_file_presence)
-        and (np := partial(n, dependencies.working_directory))
+        and (np := partial(n, root_dir=dependencies.working_directory))
         else ...
     )
     builder.add_node(n.__name__, n) if (n := select_working_base_metadata_file) else ...
@@ -400,11 +400,10 @@ def build_graph(dependencies: Dependencies):
     )
 
     memory = MemorySaver()
-    return builder.compile(
+    return builder.compile(checkpointer=memory), dict(
         interrupt_before=[register_user_query_response.__name__],
         interrupt_after=[
             pull_ready_user_query.__name__,
             register_user_query_response.__name__,
         ],
-        checkpointer=memory,
     )
