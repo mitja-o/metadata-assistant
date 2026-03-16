@@ -19,6 +19,10 @@ check: pyproject.toml
 test: pyproject.toml
 	uv run pytest
 
+.PHONY: evaluate
+evaluate: pyproject.toml _evaluation
+	uv run --group dev --group experiments --group sandbox pytest _evaluation
+
 # Developer hints
 # ===============
 

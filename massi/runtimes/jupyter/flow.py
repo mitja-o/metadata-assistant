@@ -1,7 +1,8 @@
-from langgraph.graph import StateGraph
-import massi.runtimes.flow as mf
-
 from warnings import deprecated
+
+from langgraph.graph import StateGraph
+
+import massi.runtimes.flow as mf
 
 
 @deprecated("Use `stream_until_iterruption` from `massi.runtimes.flow` instead.")
