@@ -1,9 +1,9 @@
 import pprint
 
-from langgraph.graph import StateGraph
+from langgraph.graph.state import CompiledStateGraph
 
 
-def stream_until_iterruption(graph: StateGraph, *args, verbose=False, **kwargs):
+def stream_until_iterruption(graph: CompiledStateGraph, *args, verbose=False, **kwargs):
     for event in graph.stream(*args, **kwargs, stream_mode="values"):
         print("\n==== new event ====") if verbose else ...
         if verbose:

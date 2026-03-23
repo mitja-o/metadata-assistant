@@ -4,25 +4,49 @@ configs:
     planned: &planned "planned"
     doing: &doing "doing"
     finished: &finished "finished"
+    discarded: &discarded "discarded"
 
 use_cases:
   backlog:
-    - id: UC3
-      tag: input-reference-validation
-      description: |
-        massi can evaluate the consistency and relevance of user provided and inferred information
-      expected-outcome: a set of inconsistency flags and improvement suggestions
+    - id: m2
+      tag: agent-driven-data-description
+      description: massi can explore the data and autonomously produce the metadata attributes
+      expected-outcome: a compile JSON metadata file
       validation: |#md
         TBD
-    - id: UC4
-      tag: iterative-refinement
-      description: |
-          massi supports an ongoing dialogue and iterative value refinement for inquiry-style queries
-      expected-outcome: an interaction scheme where a user answer is not a single input but a dialogue
+    - id: v-structural
+      tag: structural-validation-groundtruth-metrics
+      description: evaluation procedures support a number of structural JSON validations
+      expected-outcome: metrics can be reported on
+      validation: |#md
+        TBD
+    - id: v-semantic
+      tag: semantic-validation-groundtruth-metrics
+      description: evaluation procedures support a number of semantic validations of the produced attributes
+      expected-outcome: metrics can be reported on
+      validation: |#md
+        TBD
+    - id: planning-query-structured-output
+      tag: planning-query-structured-output
+      description: the query plan should produce structured output requirement to make sure the query response suits the target metadata format
+      expected-outcome: query plan execution is should produce attribute content of required type
       validation: |#md
         TBD
 
   doing:
+
+  done: # NB: don't forget to mention a validation approach
+    - id: UC1-M1
+      tag: author-driven-base-metadata-inquiry
+      description: massi can iteratively inquire the user to complete the base metadata
+      expected-outcome: a completed JSON base metadata file (MIAGIS requirement)
+      validation: |#md
+        1. Ensure the metadata file reaches a completion.
+
+        see 
+         - `_demo/m1-uc1-massi_demo--missing_data.ipynb`
+         - `_evaluation/test_m1_evaluation_pipeline.py`
+
     - id: UC2
       tag: used-product-inference
       description: |
@@ -44,44 +68,44 @@ use_cases:
             - Rely on an in-memory database for 'concurrent' resource description generation?
             - Eventually dump/expose the database?
           status: *finished
-        - description: |
-            Retrieve the surrounding resource information to produce metadata.
+        # - description: |
+        #     Retrieve the surrounding resource information to produce metadata.
 
-            1. Ingest information from the data and related artifacts, e.g.
-                1. parse Jupyter Notebook cells for remote service URLs (REST endpoints) and other snippets
-                2. read textual files that describe the process
-                3. retrieve metadata from metadata-infused artifacts
-                4. perform basic data exploration and identify the higher-level patterns/features
-            2. Come up with the relevant fields for the metadata
-            3. Enrich the resource records with metadata
-          status: *planned
-        - description: |
-            Validate the produced descriptions for semantic soundness:
+        #     1. Ingest information from the data and related artifacts, e.g.
+        #         1. parse Jupyter Notebook cells for remote service URLs (REST endpoints) and other snippets
+        #         2. read textual files that describe the process
+        #         3. retrieve metadata from metadata-infused artifacts
+        #         4. perform basic data exploration and identify the higher-level patterns/features
+        #     2. Come up with the relevant fields for the metadata
+        #     3. Enrich the resource records with metadata
+        #   status: *planned
+        # - description: |
+        #     Validate the produced descriptions for semantic soundness:
 
-            1. Validate 'creator' and 'creator_type' alignment, ensuring 1:1 mapping for multi-entry comma-separated strings as per MIAGIS logic.
-            2. Validate sound collection of resource descriptions
-            3. (TBD...)
-          status: *planned
-        - description: |
-            Suggest the user to review the produced resource description table (e.g. using DuckDB).
-          status: *planned
-        - description: |
-            Once user confirms readiness, remove all 'operational' columns and tags, and finalize the resource description.
-          status: *planned
+        #     1. Validate 'creator' and 'creator_type' alignment, ensuring 1:1 mapping for multi-entry comma-separated strings as per MIAGIS logic.
+        #     2. Validate sound collection of resource descriptions
+        #     3. (TBD...)
+        #   status: *planned
+        # - description: |
+        #     Suggest the user to review the produced resource description table (e.g. using DuckDB).
+        #   status: *planned
+        # - description: |
+        #     Once user confirms readiness, remove all 'operational' columns and tags, and finalize the resource description.
+        #   status: *planned
       validation: |#md
         1. Verify `resource_name` column exists.
         2. Ensure `alternate_locations` contains valid URLs/paths.
         3. Check that `creator` and `creator_type` counts match in each row.
 
-  done: # NB: don't forget to mention a validation approach
-    - id: UC1
-      tag: base-metadata-inquiry
-      description: massi can iteratively inquire the user to complete the base metadata
-      expected-outcome: a completed JSON base metadata file (MIAGIS requirement)
-      validation: |#md
-        1. Ensure the metadata file reaches a completion.
+        see
+         - `_demo/m2-uc2-massi_demo--resource_inference.ipynb`
 
-        see `_demo/uc1-massi_demo--missing_data.ipynb`
+    - id: v-framework
+      tag: evaluation-framework
+      description: basic setup of an evaluation framework
+      expected-outcome: run the end-to-end massi interaction with periphery services (e.g. author proxy)
+      validation: |#md
+        see - `_evaluation/`
 
 # Supported interface options
 interfaces:

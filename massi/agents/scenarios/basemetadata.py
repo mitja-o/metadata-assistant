@@ -9,6 +9,7 @@ from langchain_core.messages import HumanMessage, SystemMessage
 from langgraph.checkpoint.memory import MemorySaver
 from langgraph.graph import END, START, StateGraph
 
+from massi.agents.inquiry_engine import get_next_step, is_plan_completed
 import massi.agents.tools as massi_toolkit
 from massi.agents.constructs import (
     BaseMetadataState,
@@ -111,10 +112,14 @@ def interpret_metadata_checks(
     response = llm.invoke(
         [
             SystemMessage(
-                content=MessageBuilder.error_validation_system_message(state)
+                content=MessageBuilder.base_metadata_error_validation_system_message(
+                    state
+                )
             ),
             HumanMessage(
-                content=MessageBuilder.error_to_model_request(state)
+                content=MessageBuilder.error_to_model_request(
+                    state, Defaults.base_metadata_json_schema
+                )
                 + "\n\n Please explain what went wrong"
             ),
         ]
@@ -130,7 +135,11 @@ def plan_user_query(
         SystemMessage(
             MessageBuilder.base_metadata_error_resolution_planning_system_message(state)
         ),
-        HumanMessage(MessageBuilder.error_to_model_request(state)),
+        HumanMessage(
+            MessageBuilder.error_to_model_request(
+                state, Defaults.base_metadata_json_schema
+            )
+        ),
     ]
     response = llm.with_structured_output(QueryPlan).invoke(messages).model_dump()
     return {
@@ -141,149 +150,63 @@ def plan_user_query(
     }
 
 
-def _is_last_query_step_reached(
-    state: BaseMetadataState, taken_step_pointer: None | QueryStepId = None
-) -> bool:
-    """Determine if the last query step is reached
-
-    Args:
-        state (BaseMetadataState): the current state of the workflow
-        taken_step_pointer (None | QueryStepId, optional): optional override of an intended taken step. If specified, used instead of `current_step_pointer` attribute of the state. Defaults to None.
-
-    Returns:
-        bool: whether the last query step is reached
-
-    Examples:
-        >>> _is_last_query_step_reached({})
-        True
-        >>> _is_last_query_step_reached({"query_plan": {"queries": [{"id": 1}]}})
-        False
-        >>> _is_last_query_step_reached({"query_plan": {"queries": [{"id": 1}]}, "current_step_pointer": 0})
-        True
-        >>> _is_last_query_step_reached({"query_plan": {"queries": [{"id": 1}, {"id": 2}]}, "current_step_pointer": 0}, taken_step_pointer=1)
-        True
-    """
-    query_steps = state.get("query_plan", {}).get("queries", [])
-    max_step_pointer = len(query_steps) - 1 if query_steps else None
-    current_step_pointer = taken_step_pointer or state.get("current_step_pointer", None)
-    # breakpoint()
-    return max_step_pointer == current_step_pointer
-
-
 def is_query_plan_completed(state: BaseMetadataState) -> QueryPlanExecutionState:
     """Checks if the plan is completed.
 
-    Args:
-        state (BaseMetadataState): current state of the Agent's execution graph
+    Examples:
+        >>> step1 = QueryStep(id=1, key="v", json_path=".", priority=1, query="q1")
+        >>> plan_dict = {"queries": [step1.model_dump()]}
 
-    Returns:
-        QueryPlanExecutionState: decision about further actions
+        >>> # Query is not finished yet
+        >>> is_query_plan_completed_edge({"query_plan": plan_dict, "current_query_id": None})
+        <QueryPlanExecutionState.ACT: 1>
+
+        >>> # Query is finished
+        >>> is_query_plan_completed_edge({"query_plan": plan_dict, "current_query_id": 1})
+        <QueryPlanExecutionState.STOP: 0>
+    """
+    plan_dict = state.get("query_plan")
+    current_id = state.get("current_query_id")
+
+    if not plan_dict or is_plan_completed(QueryPlan(**plan_dict), current_id):
+        return QueryPlanExecutionState.STOP
+
+    return QueryPlanExecutionState.ACT
+
+
+def pull_ready_user_query(state: BaseMetadataState) -> dict:
+    """Puts the user query ready for display using the functional Logic API.
 
     Examples:
-        >>> QueryPlanExecutionState.STOP == (
-        ...     is_query_plan_completed({})
-        ... )
-        True
-        >>> QueryPlanExecutionState.ACT == (
-        ...     is_query_plan_completed({"query_plan": {"queries": [{"id": 1}]}})
-        ... )
-        True
-        >>> QueryPlanExecutionState.ACT == (
-        ...     is_query_plan_completed({
-        ...         "query_plan": {"queries": [{"id": 1}]},
-        ...         "current_step_pointer": None,
-        ...     })
-        ... )
-        True
-        >>> QueryPlanExecutionState.ACT == (
-        ...     is_query_plan_completed({
-        ...         "query_plan": {"queries": [{"id": 1}]},
-        ...         "current_step_pointer": None,
-        ...         "query_plan_completed": False
-        ...     })
-        ... )
-        True
-        >>> QueryPlanExecutionState.ACT == (
-        ...     is_query_plan_completed({
-        ...         "query_plan": {"queries": [{"id": 1}]},
-        ...         "current_step_pointer": None,
-        ...         "query_plan_completed": True
-        ...     })
-        ... )
-        True
-        >>> QueryPlanExecutionState.STOP == (
-        ...     is_query_plan_completed({
-        ...         "query_plan": {"queries": [{"id": 1}]},
-        ...         "current_step_pointer": 0,
-        ...         "query_plan_completed": True
-        ...     })
-        ... )
+        >>> step1 = QueryStep(id=1, key="v", json_path=".", priority=1, query="q1")
+        >>> plan_dict = {"queries": [step1.model_dump()]}
+
+        >>> # First query is pulled
+        >>> res1 = pull_ready_user_query({"query_plan": plan_dict, "current_query_id": None})
+        >>> res1['current_query_id']
+        1
+        >>> res1['query_plan_completed']
+        False
+
+        >>> # Final query is pulled
+        >>> res2 = pull_ready_user_query({"query_plan": plan_dict, "current_query_id": 1})
+        >>> res2['current_query_id']
+        1
+        >>> res2['query_plan_completed']
         True
     """
-    is_last_step_reached = _is_last_query_step_reached(state)
+    plan_dict = state.get("query_plan")
+    current_id = state.get("current_query_id")
 
-    return (
-        QueryPlanExecutionState.STOP
-        if (
-            not state.get("query_plan", {}).get("queries", [])
-            or (state.get("query_plan_completed", True) and is_last_step_reached)
-        )
-        else QueryPlanExecutionState.ACT
-    )
+    if not plan_dict or not plan_dict.get("queries"):
+        return {"query_plan_completed": True}
 
-
-def pull_ready_user_query(state: BaseMetadataState) -> BaseMetadataState:
-    """Puts the user query ready for display.
-    IMPORTANT: should be followed by an interrup/user answer request
-
-    Args:
-        state (BaseMetadataState): state of the Agent's graph execution
-
-    Returns:
-        BaseMetadataState: modified state of the Agent's graph execution
-
-    Examples:
-        >>> # sequential pulling should reach the end of the query plan
-        >>> query_plan = {"queries": [{"id": 1, "query": "What's the ID?"}, {"id": 2, "query": "What's the goal?"}]}
-        >>> state = pull_ready_user_query({
-        ...     "query_plan": query_plan,
-        ...     "current_step_pointer": None,
-        ...     "query_plan_completed": False
-        ... })
-        >>> state                                                               # state after the first execution
-        {'current_step_pointer': 0, 'current_query_prompt': {'id': 1, 'query': "What's the ID?"}, 'query_plan_completed': False}
-        >>> pull_ready_user_query({**state, "query_plan": query_plan})          # this should pull the final query prompt
-        {'current_step_pointer': 1, 'current_query_prompt': {'id': 2, 'query': "What's the goal?"}, 'query_plan_completed': True}
-
-        >>> # calling with an empty query plan should set the completed flag to True
-        >>> pull_ready_user_query({"query_plan": {}, "current_step_pointer": None, "query_plan_completed": False })
-        {'current_step_pointer': None, 'current_query_prompt': None, 'query_plan_completed': True}
-    """
-    assert "query_plan" in state, "query plan is not available!"
-
-    query_steps = state.get("query_plan", {}).get("queries", [])
-    min_step_pointer, max_step_pointer = (
-        0 if query_steps else None,
-        len(query_steps) - 1 if query_steps else None,
-    )
-    current_step_pointer = state.get("current_step_pointer", None)
-    taken_step_id = None
-
-    taken_step_id = (
-        min_step_pointer
-        if current_step_pointer is None
-        else min(current_step_pointer + 1, max_step_pointer)
-    )
-
-    taken_query = query_steps[taken_step_id] if taken_step_id is not None else None
-    is_last_step_reached = _is_last_query_step_reached(
-        state, taken_step_pointer=taken_step_id
-    )
+    next_step = get_next_step(QueryPlan(**plan_dict), current_id)
 
     return {
-        "current_step_pointer": taken_step_id,
-        "current_query_prompt": taken_query,
-        "query_plan_completed": is_last_step_reached,
+        "current_query_prompt": next_step.model_dump() if next_step else None,
+        "current_query_id": next_step.id if next_step else current_id,
+        "query_plan_completed": next_step is None,
     }
 
 
@@ -339,55 +262,41 @@ def register_user_query_response(
 def build_graph(dependencies: Dependencies):
     llm = dependencies.llm_client
     prompt_client = dependencies.prompt_client
+    working_dir = dependencies.working_directory
 
-    n: Any = None
     builder = StateGraph(BaseMetadataState)
-    (
-        builder.add_node(n.__name__, np)
-        if (n := ensure_metadata_file_presence)
-        and (np := partial(n, root_dir=dependencies.working_directory))
-        else ...
-    )
-    builder.add_node(n.__name__, n) if (n := select_working_base_metadata_file) else ...
-    builder.add_node(n.__name__, n) if (n := check_metadata_completion) else ...
-    (
-        builder.add_node(n.__name__, np)
-        if (n := interpret_metadata_checks) and (np := partial(n, llm=llm))
-        else ...
-    )
-    (
-        builder.add_node(n.__name__, np)
-        if (n := plan_user_query) and (np := partial(n, llm=llm))
-        else ...
-    )
-    builder.add_node(n.__name__, n) if (n := pull_ready_user_query) else ...
-    (
-        builder.add_node(n.__name__, np)
-        if (n := prompt_user_query) and (np := partial(n, prompt_client=prompt_client))
-        else ...
-    )
-    (
-        builder.add_node(n.__name__, np)
-        if (n := register_user_query_response) and (np := partial(n, llm=llm))
-        else ...
-    )
 
-    builder.add_edge(START, ensure_metadata_file_presence.__name__)
-    builder.add_edge(
-        ensure_metadata_file_presence.__name__,
-        select_working_base_metadata_file.__name__,
-    )
-    builder.add_edge(
-        select_working_base_metadata_file.__name__, check_metadata_completion.__name__
-    )
-    builder.add_edge(
-        check_metadata_completion.__name__, interpret_metadata_checks.__name__
-    )
-    builder.add_edge(interpret_metadata_checks.__name__, plan_user_query.__name__)
-    builder.add_edge(plan_user_query.__name__, pull_ready_user_query.__name__)
-    builder.add_edge(pull_ready_user_query.__name__, prompt_user_query.__name__)
-    builder.add_edge(prompt_user_query.__name__, register_user_query_response.__name__)
-    # builder.add_edge(register_user_query_response.__name__, END)
+    nodes = [
+        (ensure_metadata_file_presence, {"root_dir": working_dir}),
+        (select_working_base_metadata_file, {}),
+        (check_metadata_completion, {}),
+        (interpret_metadata_checks, {"llm": llm}),
+        (plan_user_query, {"llm": llm}),
+        (pull_ready_user_query, {}),
+        (prompt_user_query, {"prompt_client": prompt_client}),
+        (register_user_query_response, {"llm": llm}),
+    ]
+    for func, kwargs in nodes:
+        node_name = func.__name__
+        node_func = partial(func, **kwargs) if kwargs else func
+        builder.add_node(node_name, node_func)
+
+    sequential_edges = [
+        (START, ensure_metadata_file_presence),
+        (ensure_metadata_file_presence, select_working_base_metadata_file),
+        (select_working_base_metadata_file, check_metadata_completion),
+        (check_metadata_completion, interpret_metadata_checks),
+        (interpret_metadata_checks, plan_user_query),
+        (plan_user_query, pull_ready_user_query),
+        (pull_ready_user_query, prompt_user_query),
+        (prompt_user_query, register_user_query_response),
+    ]
+    for source, target in sequential_edges:
+        builder.add_edge(
+            source if isinstance(source, str) else source.__name__,
+            target if isinstance(target, str) else target.__name__,
+        )
+
     # # FIXME(rendering-display):
     builder.add_conditional_edges(
         register_user_query_response.__name__,

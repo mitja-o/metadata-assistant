@@ -103,8 +103,19 @@ def laminar_observer():
     )
 
 
+@pytest.fixture()
+def author_proxy():
+    author_proxy, _ = create_author_agent(
+        Defaults.input_paper,
+        Defaults.author_agent_configs["embedding"],
+        Defaults.author_agent_configs["chat"],
+    )
+    proxy_prompt_client = AuthorAgentProxyPrompt(author_proxy)
+    return proxy_prompt_client
+
+
 @observe(span_type="LLM", session_id=evaluation_id("evaluation-run"))
-def test_empty_metadata(base_metadata_file_name, laminar_observer):
+def test_empty_metadata(base_metadata_file_name, laminar_observer, author_proxy):
     # --- Arrange ---
     eval_id = evaluation_id(test_empty_metadata.__name__)
     thread_config = {"configurable": {"thread_id": str(random.randint(1, 100))}}
@@ -114,19 +125,12 @@ def test_empty_metadata(base_metadata_file_name, laminar_observer):
     metadata_path = write_metadata(base_metadata_file_name, metadata)
 
     print(metadata)
-    assert not metadata.keys() == og_metadata.keys(), "Keys should be masked!"
-
     print(metadata_path)
-    author_proxy, _ = create_author_agent(
-        Defaults.input_paper,
-        Defaults.author_agent_configs["embedding"],
-        Defaults.author_agent_configs["chat"],
-    )
-    proxy_prompt_client = AuthorAgentProxyPrompt(author_proxy)
+    assert not metadata.keys() == og_metadata.keys(), "Keys should be masked!"
 
     deps = Dependencies(
         llm_client=create_ollama_llm(Defaults.massi_config),
-        prompt_client=proxy_prompt_client,
+        prompt_client=author_proxy,
         working_directory=str(metadata_path.parent),
     )
 
@@ -149,7 +153,6 @@ def test_empty_metadata(base_metadata_file_name, laminar_observer):
     query_plan = graph.get_state(thread_config).values["query_plan"]
 
     # FIXME(use a dataclass / typed dict / pydantic model): make the evaluation recording type safe
-    # TODO: also record the query plan
     pd.DataFrame.from_records(
         [
             dict(

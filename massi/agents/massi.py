@@ -5,6 +5,7 @@ from langchain_openai import ChatOpenAI
 
 import massi.agents.scenarios.basemetadata as uc1_base_metadata
 import massi.agents.scenarios.resources as uc2_resources
+import massi.agents.scenarios.resource_properties as uc3_resources
 from massi.agents.interfaces import Config, Dependencies, PromptClient
 
 # Chat Model Instances
@@ -80,10 +81,18 @@ class MassiScenarioFactory:
             dependencies if dependencies else self.default_dependencies()
         )
 
-    # UC2: Resource Properties
+    # UC2: Resource Groupings
+    # =======================
+
+    def resource_grouping_graph(self, dependencies: Dependencies | None = None):
+        return uc2_resources.build_graph(
+            dependencies if dependencies else self.default_dependencies()
+        )
+
+    # UC3: Resource Properties
     # ========================
 
-    def resource_property_graph(self, dependencies: Dependencies | None = None):
-        return uc2_resources.build_graph(
+    def resource_properties_graph(self, dependencies: Dependencies | None = None):
+        return uc3_resources.build_graph(
             dependencies if dependencies else self.default_dependencies()
         )

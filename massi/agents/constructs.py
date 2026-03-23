@@ -141,10 +141,25 @@ def flatten_resource_groups(
 # ==========================
 
 
+type ResourceContext = dict
 type GISScoringCollection = list[GISScoredFile]
 
 
-class ResourcePropertyInferenceState(MessagesState, total=False):
+class ResourcePropertiesState(MessagesState, total=False):
+    resource: GroupedGisResourceFile
+    schema_validation_errors: list[MetadataValidationError]
+    resource_context: ResourceContext
+    errors_summary: AIMessage
+    query_plan: QueryPlanDict
+    query_plan_completed: bool
+    current_step_pointer: None | int
+    current_query_prompt: None | QueryPrompt
+    current_query_response: None | str
+    updated_metadata: None | MetadataUpdateDict
+    original_metadata: None | Metadata
+
+
+class ResourcePropertyGroupingState(MessagesState, total=False):
     base_metadata: None | Metadata
     files: list[ResourceFile]
     gis_scored_files: Annotated[GISScoringCollection, operator.add]
@@ -176,7 +191,7 @@ class MessageBuilder:
 
     @staticmethod
     def gis_file_relevancy_score_assessment_request(
-        state: ResourcePropertyInferenceState,
+        state: ResourcePropertyGroupingState,
     ):
         preamble = (
             f"""
@@ -219,7 +234,7 @@ Adhere to the structured response type provided.
         return preamble + request
 
     @staticmethod
-    def error_validation_system_message(_: BaseMetadataState):
+    def base_metadata_error_validation_system_message(_: BaseMetadataState):
         return """
 You are reviewing a set of JSON schema validator errors for a MIAGIS base metadata file.
 You should translate ALL erors into a human-readable descriptions.
@@ -228,8 +243,23 @@ You MUST report the original errors as a human-friendly formatter bullet-point l
 """
 
     @staticmethod
-    def error_to_model_request(state: BaseMetadataState):
+    def resoure_property_error_validation_system_message(_: BaseMetadataState):
+        return """
+You are reviewing a set of JSON schema validator errors for a single entry of a MIAGIS resource properties metadata file.
+You should translate ALL erors into a human-readable descriptions.
+
+You MUST report the original errors as a human-friendly formatter bullet-point list in your response.
+"""
+
+    @staticmethod
+    def error_to_model_request(
+        state: BaseMetadataState | ResourcePropertiesState, json_schema: dict = {}
+    ):
         return f"""
+<json-schema>
+{str(json_schema)}
+</json-schema>
+
 Here are the received JSON schema validation errors:
 {'\n-'.join([f'<Error>{str(e)}</Error>' for e in state["schema_validation_errors"]])}
 """
@@ -266,6 +296,50 @@ You MUST respond with a JSON-structure with the following format:
         "json_path": <path of the json property that this query intends to complete, e.g. '$.foo.baz'>,
         "priority": <integer value from 0 to 5 indicating how high is the priority of this query, 5 - needs to be asked as soon as possible, 0 - can be asked later>,
         "query": <short but sufficiently clear and human-readable query aimed to retrieve the value for the given key_path attribute in the error from an interviewee, it should be elaborate enough to guide the interviewee to provide a clear and comprehensive response>
+    }
+]}
+</format>
+"""
+
+    @staticmethod
+    def resource_property_error_resolution_planning_system_message(
+        _: BaseMetadataState,
+    ):
+        return """
+You are an experienced data steward collecting the base metadata for a MIAGIS file.
+MIAGIS files organise the metadata for geospatial (GIS) data depositories.
+Resource property metadata provides an overview of each resource included in the dataset associated with this MIAGIS manifest.
+
+You are focusing on the resource property metadata and are going to communicate to an AI agent assisting you to retrieve this information.
+Therefore, you are creating a metadata retrieval plan for an AI Agent skilled in data exploration.
+You given the missing attributes specified as JSON schema validation errors, design the inquiry plan to retrieve the missing attributes by delegation to an AI Agent skilled in data exploration.
+You should guide the agent by providing a concrete and non-ambiguous description of the target attribute.
+Provide a brief suggestion of the retrieval approach and examples of what the retrieved information could look like to.
+Please rely on the fact that the data we are describing is used for GIS. 
+Reflect this in the query you direct at the data exploration agent.
+
+The query plan should be an ordered sequence (stack, first-in-first-out) of requests you want to pass to a data exploration agent.
+The order should allow for growth of contextual information. 
+The earlier questions focusing on most atomic (or basic) details, the later should focus on most elaborate and free-form information.
+Example query plan is: 
+<example>
+{"queries": {
+    1: {"id": 1, "key": "id", "bbox": "$.spatial_metadata.bbox", "priority": 5, "query": "<context><file-path>foo/baz.csv</file><target-attribute>bbox</target-attribute></context>Please retrieve the bounding box - `bbox` -  of the observations contained in the `foo/baz.csv` file. Compute the bounding box by the farthest extends of the geographic coordinates present in the data. Report them as a list with four floatin-point values: [minX, minY, maxX, maxY]. If no geographic coordinates are present, return an empty list: []."},
+    2: {"id": 2, "key": "description", "json_path": "$.description", "priority": 4, "query": "<context><file-path>foo/baz.csv</file><target-attribute>description</target-attribute></context>Please derive a concise but comprehensive description of the `foo/baz.csv` file. - `bbox` -  of the observations contained in the `foo/baz.csv` file. Summarise the present columns and the purpose of the data. Reflect on the geographic location of the observations."},
+    # and so on ... 
+}}
+</example>
+
+
+You MUST respond with a JSON-structure with the following format: 
+<format required-output-format="application/json">
+{"queries": [
+    {
+        "id": <natural number ID to uniquely identify the step>
+        "key": <identifier of the attribute that needs to be filled in. e.g. in a json path '$.foo.baz', the `key` is 'baz'>
+        "json_path": <path of the json property that this query intends to complete, e.g. '$.foo.baz'>,
+        "priority": <integer value from 0 to 5 indicating how high is the priority of this query, 5 - needs to be asked as soon as possible, 0 - can be asked later>,
+        "query": <short but sufficiently clear prompt for the data exploration AI-agent, to retrieve the value for the given key_path attribute in the error from the data, it should be elaborate enough to guide the data exploration AI agent to provide a clear and comprehensive response>
     }
 ]}
 </format>

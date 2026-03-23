@@ -4,7 +4,6 @@ from statistics import fmean
 from typing import Any
 
 import pandas as pd
-from jsonschema.validators import Draft202012Validator
 from langchain_core.language_models import BaseChatModel
 from langchain_core.messages import HumanMessage
 from langgraph.checkpoint.memory import MemorySaver
@@ -19,7 +18,7 @@ from massi.agents.constructs import (
     MessageBuilder,
     QueryPlanExecutionState,
     ResourceFile,
-    ResourcePropertyInferenceState,
+    ResourcePropertyGroupingState,
     flatten_resource_groups,
 )
 from massi.agents.interfaces import Dependencies
@@ -37,68 +36,10 @@ class Defaults:
     # FIXME(configurability): make the chunk size configurable externally
     chunk_file_limit = 15
 
-    # Adapted from MIAGIS JSON Schema
-    # @see: https://moseleybioinformaticslab.github.io/miagis/jsonschema.html
-    resource_properties_metadata_json_schema = {
-        "$schema": "https://json-schema.org/draft/2020-12/schema",
-        "type": "object",
-        "properties": {
-            "location": {"type": "string", "minLength": 1},
-            "alternate_locations": {
-                "type": "array",
-                "items": {"type": "string", "minLength": 1},
-                "minItems": 1,
-            },
-            "type": {"type": "string", "minLength": 1},
-            "fairness": {"type": "string", "pattern": "(?i)^f?a?i?r?$"},
-            "format": {"type": "string", "minLength": 1},
-            "schema": {"type": ["string", "object"], "minLength": 1},
-            "sources": {"type": "array", "items": {"type": "string", "minLength": 1}},
-            "description": {"type": "string", "minLength": 1},
-            "creator": {
-                "type": "array",
-                "minItems": 1,
-                "items": {
-                    "type": "object",
-                    "properties": {
-                        "name": {"type": "string", "minLength": 1},
-                        "type": {
-                            "type": "string",
-                            "minLength": 1,
-                            "enum": ["URL", "organization", "author", "DOI"],
-                        },
-                    },
-                    "required": ["name", "type"],
-                },
-            },
-            "spatial_metadata": {  # Addition inspired on ISO-19115
-                "type": "object",
-                "properties": {
-                    "bbox": {
-                        "type": "array",
-                        "items": {"type": "number"},
-                        "minItems": 4,
-                        "maxItems": 4,
-                        "description": "[min_lon, min_lat, max_lon, max_lat]",
-                    },
-                    "crs": {"type": "string", "default": "EPSG:4326"},
-                    "update_frequency": {
-                        "type": "string",
-                        "enum": ["daily", "monthly", "annually", "as_needed", "static"],
-                    },
-                },
-            },
-        },
-        "required": ["location", "type", "fairness", "format", "description"],
-    }
-    resource_properties_metadata_json_schema_validator = Draft202012Validator(
-        resource_properties_metadata_json_schema
-    )
-
 
 def scan_directory(
-    _: ResourcePropertyInferenceState, seed_path: str = "."
-) -> ResourcePropertyInferenceState:
+    _: ResourcePropertyGroupingState, seed_path: str = "."
+) -> ResourcePropertyGroupingState:
     """
     Walk the current directory and instantiate ResourceFile objects.
     """
@@ -108,8 +49,8 @@ def scan_directory(
 
 
 def score_relevancy(
-    state: ResourcePropertyInferenceState, llm: BaseChatModel | None = None
-) -> ResourcePropertyInferenceState:
+    state: ResourcePropertyGroupingState, llm: BaseChatModel | None = None
+) -> ResourcePropertyGroupingState:
     """
     Pass the list of filenames/extensions to the LLM. The LLM returns a score (0.0 - 1.0) based on GIS signatures (e.g., .shp, .geojson).
     """
@@ -123,7 +64,7 @@ def score_relevancy(
 # Mapper Utility
 # ~~~~~~~~~~~~~~
 def prepare_naive_score_batches(
-    state: ResourcePropertyInferenceState, chunk_file_limit: int = 50
+    state: ResourcePropertyGroupingState, chunk_file_limit: int = 50
 ):
     """
     This function chunks the discovered files into small (safe for common context window sizes) batches for LLM scoring.
@@ -143,8 +84,8 @@ def prepare_naive_score_batches(
 
 
 def group_resources(
-    state: ResourcePropertyInferenceState,
-) -> ResourcePropertyInferenceState:
+    state: ResourcePropertyGroupingState,
+) -> ResourcePropertyGroupingState:
     """Group resources by resource names"""
     scored_gis_files = state.get("gis_scored_files") or []
     resource_groups: dict[str, GISScoringCollection] = {}
@@ -159,9 +100,9 @@ def group_resources(
 
 
 def resources_to_description_file(
-    state: ResourcePropertyInferenceState,
+    state: ResourcePropertyGroupingState,
     destination_file: str = "resource_properties.csv",
-) -> ResourcePropertyInferenceState:
+) -> ResourcePropertyGroupingState:
     groups = state["gis_resource_groups"]
     entries = flatten_resource_groups(groups)
     entries_ef = pd.DataFrame.from_records([e.model_dump() for e in entries])
@@ -177,39 +118,39 @@ def resources_to_description_file(
 
 
 def plan_metadata_inference(
-    state: ResourcePropertyInferenceState, llm: BaseChatModel | None = None
-) -> ResourcePropertyInferenceState:
+    state: ResourcePropertyGroupingState, llm: BaseChatModel | None = None
+) -> ResourcePropertyGroupingState:
     # FIXME: implement
     warnings.warn("Planning is not yet implemented", RuntimeWarning)
     return state
 
 
 def pull_next_metadata_inference_step(
-    state: ResourcePropertyInferenceState,
-) -> ResourcePropertyInferenceState:
+    state: ResourcePropertyGroupingState,
+) -> ResourcePropertyGroupingState:
     # FIXME: implement
     warnings.warn("Metadata inference execution is not yet implemented", RuntimeWarning)
     return state
 
 
 def execute_metadata_inference_step(
-    state: ResourcePropertyInferenceState, llm: BaseChatModel | None = None
-) -> ResourcePropertyInferenceState:
+    state: ResourcePropertyGroupingState, llm: BaseChatModel | None = None
+) -> ResourcePropertyGroupingState:
     # FIXME: implement
     warnings.warn("Metadata inference is not yet implemented", RuntimeWarning)
     return state
 
 
 def register_metadata_inference_step(
-    state: ResourcePropertyInferenceState, llm: BaseChatModel | None = None
-) -> ResourcePropertyInferenceState:
+    state: ResourcePropertyGroupingState, llm: BaseChatModel | None = None
+) -> ResourcePropertyGroupingState:
     # FIXME: implement
     warnings.warn("Metadata inference is not yet implemented", RuntimeWarning)
     return state
 
 
 def is_query_plan_completed(
-    state: ResourcePropertyInferenceState,
+    state: ResourcePropertyGroupingState,
 ) -> QueryPlanExecutionState:
     # FIXME: implement
     warnings.warn("Metadata inference is not yet implemented", RuntimeWarning)
@@ -223,7 +164,7 @@ def build_graph(dependencies: Dependencies):
     llm = dependencies.llm_client
 
     n: Any = None
-    builder = StateGraph(ResourcePropertyInferenceState)
+    builder = StateGraph(ResourcePropertyGroupingState)
     (
         builder.add_node(n.__name__, np)
         if (n := scan_directory) and (np := partial(n, seed_path=Defaults.seed_path))
