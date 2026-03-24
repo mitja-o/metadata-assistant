@@ -17,6 +17,7 @@ from massi.agents.constructs import (
     MetadataUpdate,
     QueryPlan,
     QueryPlanExecutionState,
+    QueryStep,
     QueryStepId,
 )
 from massi.agents.interfaces import Dependencies, PromptClient
@@ -145,33 +146,8 @@ def plan_user_query(
     return {
         "messages": messages,
         "query_plan": response,
-        "current_step_pointer": None,
         "query_plan_completed": False,
     }
-
-
-def is_query_plan_completed(state: BaseMetadataState) -> QueryPlanExecutionState:
-    """Checks if the plan is completed.
-
-    Examples:
-        >>> step1 = QueryStep(id=1, key="v", json_path=".", priority=1, query="q1")
-        >>> plan_dict = {"queries": [step1.model_dump()]}
-
-        >>> # Query is not finished yet
-        >>> is_query_plan_completed_edge({"query_plan": plan_dict, "current_query_id": None})
-        <QueryPlanExecutionState.ACT: 1>
-
-        >>> # Query is finished
-        >>> is_query_plan_completed_edge({"query_plan": plan_dict, "current_query_id": 1})
-        <QueryPlanExecutionState.STOP: 0>
-    """
-    plan_dict = state.get("query_plan")
-    current_id = state.get("current_query_id")
-
-    if not plan_dict or is_plan_completed(QueryPlan(**plan_dict), current_id):
-        return QueryPlanExecutionState.STOP
-
-    return QueryPlanExecutionState.ACT
 
 
 def pull_ready_user_query(state: BaseMetadataState) -> dict:
@@ -182,30 +158,34 @@ def pull_ready_user_query(state: BaseMetadataState) -> dict:
         >>> plan_dict = {"queries": [step1.model_dump()]}
 
         >>> # First query is pulled
-        >>> res1 = pull_ready_user_query({"query_plan": plan_dict, "current_query_id": None})
-        >>> res1['current_query_id']
+        >>> res1 = pull_ready_user_query({"query_plan": plan_dict, "current_query_step": None})
+        >>> res1["current_query_step"]["id"]
         1
-        >>> res1['query_plan_completed']
+        >>> res1["query_plan_completed"]
         False
 
         >>> # Final query is pulled
-        >>> res2 = pull_ready_user_query({"query_plan": plan_dict, "current_query_id": 1})
-        >>> res2['current_query_id']
-        1
-        >>> res2['query_plan_completed']
+        >>> res2 = pull_ready_user_query({"query_plan": plan_dict, "current_query_step": step1.model_dump()})
+        >>> res2["current_query_step"] == None
+        True
+        >>> res2["query_plan_completed"]
         True
     """
     plan_dict = state.get("query_plan")
-    current_id = state.get("current_query_id")
-
-    if not plan_dict or not plan_dict.get("queries"):
+    if (
+        state.get("query_plan_completed")
+        or not plan_dict
+        or not plan_dict.get("queries")
+    ):
         return {"query_plan_completed": True}
+
+    current_step = state.get("current_query_step", None)
+    current_id = QueryStep(**current_step).id if current_step else None
 
     next_step = get_next_step(QueryPlan(**plan_dict), current_id)
 
     return {
-        "current_query_prompt": next_step.model_dump() if next_step else None,
-        "current_query_id": next_step.id if next_step else current_id,
+        "current_query_step": next_step.model_dump() if next_step else None,
         "query_plan_completed": next_step is None,
     }
 
@@ -213,10 +193,10 @@ def pull_ready_user_query(state: BaseMetadataState) -> dict:
 def prompt_user_query(
     state: BaseMetadataState, prompt_client: PromptClient | None = None
 ) -> BaseMetadataState:
-    planned_query_prompt = state.get("current_query_prompt", {}).get("query", None)
+    # TODO(feature): reformulate the query based on the surrounding context
+    planned_query_prompt = state.get("current_query_step", {}).get("query", None)
     responses = prompt_client.prompt_user(
-        queries=[planned_query_prompt] if planned_query_prompt else [],
-        prelude=["\n~~~"],
+        queries=[planned_query_prompt] if planned_query_prompt else []
     )
     return {"current_query_response": responses[0]}
 
@@ -233,7 +213,7 @@ def register_user_query_response(
     Returns:
         BaseMetadataState: the updated workflow state.
     """
-    current_query = state.get("current_query_prompt", {})
+    current_query = state.get("current_query_step", {}).get("query", "")
     given_response = state.get("current_query_response", "")
     messages = state.get("messages", [])
 
@@ -257,6 +237,31 @@ def register_user_query_response(
             json.dump(update.metadata, bmf)
 
     return {"updated_metadata": update.model_dump(), "messages": messages}
+
+
+def is_query_plan_completed(state: BaseMetadataState) -> QueryPlanExecutionState:
+    """Checks if the plan is completed.
+
+    Examples:
+        >>> step1 = QueryStep(id=1, key="v", json_path=".", priority=1, query="q1")
+        >>> plan_dict = {"queries": [step1.model_dump()]}
+
+        >>> # Query is not finished yet
+        >>> is_query_plan_completed({"query_plan": plan_dict, "current_query_step": None})
+        <QueryPlanExecutionState.ACT: 1>
+
+        >>> # Query is finished
+        >>> is_query_plan_completed({"query_plan": plan_dict, "current_query_step": step1.model_dump()})
+        <QueryPlanExecutionState.STOP: 0>
+    """
+    plan_dict = state.get("query_plan")
+    current_step = state.get("current_query_step", None)
+    current_id = QueryStep(**current_step).id if current_step else None
+
+    if not plan_dict or is_plan_completed(QueryPlan(**plan_dict), current_id):
+        return QueryPlanExecutionState.STOP
+
+    return QueryPlanExecutionState.ACT
 
 
 def build_graph(dependencies: Dependencies):
