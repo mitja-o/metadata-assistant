@@ -9,7 +9,6 @@ from langchain_core.messages import HumanMessage, SystemMessage
 from langgraph.checkpoint.memory import MemorySaver
 from langgraph.graph import END, START, StateGraph
 
-from massi.agents.inquiry_engine import get_next_step, is_plan_completed
 import massi.agents.tools as massi_toolkit
 from massi.agents.constructs import (
     BaseMetadataState,
@@ -20,6 +19,7 @@ from massi.agents.constructs import (
     QueryStep,
     QueryStepId,
 )
+from massi.agents.inquiry_engine import get_next_step, is_plan_completed
 from massi.agents.interfaces import Dependencies, PromptClient
 
 # UC1: Base Metadata
@@ -226,7 +226,7 @@ def register_user_query_response(
             messages
             + [
                 HumanMessage(
-                    MessageBuilder.update_given_metadata_request(
+                    MessageBuilder.update_given_base_metadata_request(
                         state, metadata=base_metadata
                     )
                 )

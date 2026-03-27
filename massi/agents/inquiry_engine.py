@@ -7,14 +7,14 @@ def get_next_step(
     """
     Returns the next step in the plan. If current_step_id is None, returns the first step.
 
-    >>> step1 = QueryStep(id="1", key="a", json_path=".", priority=1, query="q1")
-    >>> step2 = QueryStep(id="2", key="b", json_path=".", priority=2, query="q2")
+    >>> step1 = QueryStep(id=1, key="a", json_path=".", priority=1, query="q1")
+    >>> step2 = QueryStep(id=2, key="b", json_path=".", priority=2, query="q2")
     >>> plan = QueryPlan(queries=[step1, step2])
     >>> get_next_step(plan, None).id
-    '1'
-    >>> get_next_step(plan, "1").id
-    '2'
-    >>> get_next_step(plan, "2") is None
+    1
+    >>> get_next_step(plan, 1).id
+    2
+    >>> get_next_step(plan, 2) is None
     True
     """
     if not current_step_id:
@@ -37,12 +37,12 @@ def get_previous_step(
     """
     Returns the step immediately preceding the current_step_id.
 
-    >>> step1 = QueryStep(id="1", key="a", json_path=".", priority=1, query="q1")
-    >>> step2 = QueryStep(id="2", key="b", json_path=".", priority=2, query="q2")
+    >>> step1 = QueryStep(id=1, key="a", json_path=".", priority=1, query="q1")
+    >>> step2 = QueryStep(id=2, key="b", json_path=".", priority=2, query="q2")
     >>> plan = QueryPlan(queries=[step1, step2])
-    >>> get_previous_step(plan, "2").id
-    '1'
-    >>> get_previous_step(plan, "1") is None
+    >>> get_previous_step(plan, 2).id
+    1
+    >>> get_previous_step(plan, 1) is None
     True
     """
     indices = (i for i, s in enumerate(plan.queries) if s.id == current_step_id)
@@ -57,11 +57,11 @@ def is_plan_completed(
     """
     Checks if the current step is the final leaf of the plan.
 
-    >>> step1 = QueryStep(id="1", key="a", json_path=".", priority=1, query="q1")
+    >>> step1 = QueryStep(id=1, key="a", json_path=".", priority=1, query="q1")
     >>> plan = QueryPlan(queries=[step1])
     >>> is_plan_completed(plan, None)
     False
-    >>> is_plan_completed(plan, "1")
+    >>> is_plan_completed(plan, 1)
     True
     >>> is_plan_completed(QueryPlan(queries=[]), None)
     True

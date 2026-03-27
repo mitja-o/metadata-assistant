@@ -115,6 +115,9 @@ def resources_to_description_file(
 
 # Query Planning and Execution
 # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+# map-reduce:
+#   map grouped_resource_entries resource_properties_graph
+#   |> reduce to_csv.from_entries
 
 
 def plan_metadata_inference(

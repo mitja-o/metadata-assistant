@@ -28,6 +28,7 @@ class MetadataValidationError(TypedDict):
 
 type QueryStepId = int
 type QueryPrompt = str
+type QueryStepDict = dict
 type Metadata = dict
 type QueryPlanDict = dict
 type MetadataUpdateDict = dict
@@ -94,6 +95,11 @@ class GISScoredFile(ResourceFile):
     gis_relevancy_score: float = 0.0
 
 
+class GroupedGisResourceFile(GISScoredFile):
+    resource_name: str
+    group_score: float
+
+
 class GISScoringCollectionResponse(DictGetCompatibleModel):
     entries: list[GISScoredFile]
 
@@ -107,11 +113,6 @@ class GisResourceGroup(DictGetCompatibleModel):
 
     group_score: float
     """A mean-value score computed from all entries' relevances."""
-
-
-class GroupedGisResourceFile(GISScoredFile):
-    resource_name: str
-    group_score: float
 
 
 def flatten_resource_groups(
@@ -152,8 +153,7 @@ class ResourcePropertiesState(MessagesState, total=False):
     errors_summary: AIMessage
     query_plan: QueryPlanDict
     query_plan_completed: bool
-    current_step_pointer: None | int
-    current_query_prompt: None | QueryPrompt
+    current_query_step: None | QueryStepDict
     current_query_response: None | str
     updated_metadata: None | MetadataUpdateDict
     original_metadata: None | Metadata
@@ -176,8 +176,7 @@ class BaseMetadataState(MessagesState, total=False):
     errors_summary: AIMessage
     query_plan: QueryPlanDict
     query_plan_completed: bool
-    current_step_pointer: None | int
-    current_query_prompt: None | QueryPrompt
+    current_query_step: None | QueryStepDict
     current_query_response: None | str
     updated_metadata: None | MetadataUpdateDict
     original_metadata: None | Metadata
@@ -346,8 +345,8 @@ You MUST respond with a JSON-structure with the following format:
 """
 
     @staticmethod
-    def update_given_metadata_request(state: BaseMetadataState, metadata: dict):
-        current_query = state["current_query_prompt"]
+    def update_given_base_metadata_request(state: BaseMetadataState, metadata: dict):
+        current_query = state["current_query_step"]
         response = state["current_query_response"]
 
         return f"""
@@ -360,7 +359,54 @@ Given (a) the query for a missing piece of the metadata, (b) the user-provided r
 2. Identify where in the (c) current metadata file the response fits according to the details of (a).
 3. Update the (c) metadata file by adding the (b, rephrased after step 1.) improved user response as a field described by (a).
 
-DO NOT change any existing metadata file details.
+YOU SHOULD MODIFY ONLY ONE ATTRIBUTE AS SPECIFIED IN THE QUERY DETAILS AND USER RESPONSE.
+DO NOT CHANGE ANY ADDITIONAL ATTRIBUTES IN THE METADATA FILE.
+
+Here are the provided details:
+
+(a)
+<query-details>
+{current_query}
+</query-details>
+
+(b)
+<user-response>
+{response}
+</user-response>
+
+The attributes already present in the current metadata MUST be preserved, only append new attribute from the query and response above.
+
+(c)
+<current-metadata>
+{metadata}
+</current-metadata>
+
+In your response, you MUST only report the final metadata file, with the added metadata attributes.
+For example, if the <query-details> request input for an attribute `description`, and the <user-response> is `this is my response`, the updated metadata should contain contain a new attribute: `{{"description": "this is my response", <remaining attributes are unchanged>}}.
+"""
+
+    @staticmethod
+    def update_given_resource_properties_request(
+        state: BaseMetadataState, metadata: dict, context: dict
+    ):
+        current_query = state["current_query_step"]
+        response = state["current_query_response"]
+
+        return f"""
+Context:
+{context}
+
+You are an experienced data steward collecting the resource properties for a MIAGIS file.
+MIAGIS files organise the metadata for geospatial (GIS) data depositories.
+Resource properties collect metadata about a specific resource included in the dataset.
+
+Given (a) the query for a missing piece of the metadata, (b) the data explorer-provided response, and (c) current resource properties metadata, you should:
+1. Check the (b) user response quality and, if necessary, rephrase it to a most appropriate formulation according to the nature of (a) and contents of (c).
+2. Identify where in the (c) current metadata file the response fits according to the details of (a).
+3. Update the (c) metadata file by adding the (b, rephrased after step 1.) improved user response as a field described by (a).
+
+YOU SHOULD MODIFY ONLY ONE ATTRIBUTE AS SPECIFIED IN THE QUERY DETAILS AND USER RESPONSE.
+DO NOT CHANGE ANY ADDITIONAL ATTRIBUTES IN THE METADATA FILE.
 
 Here are the provided details:
 

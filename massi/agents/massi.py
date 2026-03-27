@@ -4,8 +4,8 @@ from langchain_ollama import ChatOllama
 from langchain_openai import ChatOpenAI
 
 import massi.agents.scenarios.basemetadata as uc1_base_metadata
-import massi.agents.scenarios.resources as uc2_resources
 import massi.agents.scenarios.resource_properties as uc3_resources
+import massi.agents.scenarios.resources as uc2_resources
 from massi.agents.interfaces import Config, Dependencies, PromptClient
 
 # Chat Model Instances
@@ -66,7 +66,7 @@ class MassiScenarioFactory:
             ...         config = Config(**{"model_url": "http://host.docker.internal:11434", "model_name": "granite4:3b"})
             ...         factory = MassiScenarioFactory(config)
             ...         factory.default_dependencies()
-            Dependencies(llm_client='mock_ollama', prompt_client='mock_prompt_client')
+            Dependencies(llm_client='mock_ollama', prompt_client='mock_prompt_client', working_directory='.')
         """
         return Dependencies(
             llm_client=create_ollama_llm(self.config),
