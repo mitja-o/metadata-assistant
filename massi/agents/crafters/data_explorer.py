@@ -99,11 +99,11 @@ def execute_extraction(
         data,
         allow_dangerous_code=True,
         prefix=(
-            "ALWAYS adhere to the required output formats: `Thought-Action-Action_Input` for intermediate steps, and `Thought-Final_Answer` for final answers.\n"
-            "Report the final result as ```\nThought: <reasoning that lead to the answer> \nFinal Answer: <value>\n```\n."
             "If you realise that it is not possible to extract the value from the provided file, report this realisation as your answer:\n"
             "```Thought: <reasoning that lead to the answer> \nFinal Answer: <explanation that the value can not be computed based on the given file>\n```\n"
-            "If the context provides sufficient information to answer the question without any computation, provide the answer directly.\n\n"
+            "If the context provides sufficient information to answer the question without any computation, provide the answer directly.\n"
+            "Report the final result as ```\nThought: <reasoning that lead to the answer> \nFinal Answer: <value>\n```\n."
+            "ALWAYS adhere to the required output formats: `Thought-Action-Action_Input` for intermediate steps, and `Thought-Final_Answer` for final answers.\n\n"
             f"Resource Context:\n<investigated-resource>\n{state.get("resource", {})}\n</investigated-resource>"
         ),
     )
@@ -112,7 +112,13 @@ def execute_extraction(
         content="Extract the final value based on the data provided."
     )
     prompt = f"Based on the plan: {state['analysis_plan'].plan}, extract the value for {state['query'].key}. "
-    response = pandas_executor.invoke([system_msg, HumanMessage(content=prompt)])
+    response = pandas_executor.invoke(
+        [
+            system_msg,
+            HumanMessage(content=prompt),
+            HumanMessage(content=state["query"].query),
+        ]
+    )
     return {"extraction_result": response.get("output", "")}
 
 

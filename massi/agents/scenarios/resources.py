@@ -15,14 +15,18 @@ from massi.agents.constructs import (
     GisResourceGroup,
     GISScoringCollection,
     GISScoringCollectionResponse,
+    GroupedGisResourceFileWithMetadata,
     MessageBuilder,
     QueryPlanExecutionState,
     ResourceFile,
+    ResourcePropertiesState,
+    ResourcePropertyGroupMetadataInferenceState,
     ResourcePropertyGroupingState,
     flatten_resource_groups,
 )
 from massi.agents.interfaces import Dependencies
 from massi.agents.tools import walk_working_dir_for_files
+import massi.agents.scenarios.resource_properties as rp_workflow
 
 # UC2: Resource Properties
 # ========================
@@ -32,7 +36,8 @@ class Defaults:
     # FIXME(configurability): make the seed path (data directory) configurable externally
     seed_path = "./data"
     # FIXME(configurability): make the resource destination file configurable externally
-    destination_file = "resource_properties.csv"
+    resources_collection_file = "raw_resources.csv"
+    resource_properties_file = "resource_properties.csv"
     # FIXME(configurability): make the chunk size configurable externally
     chunk_file_limit = 15
 
@@ -101,7 +106,7 @@ def group_resources(
 
 def resources_to_description_file(
     state: ResourcePropertyGroupingState,
-    destination_file: str = "resource_properties.csv",
+    destination_file: str,
 ) -> ResourcePropertyGroupingState:
     groups = state["gis_resource_groups"]
     entries = flatten_resource_groups(groups)
@@ -109,7 +114,7 @@ def resources_to_description_file(
     entries_ef.to_csv(destination_file, index=False)
     return {
         "grouped_resource_entries": entries,
-        "resource_dataframe_file": destination_file,
+        "raw_resource_dataframe_file": destination_file,
     }
 
 
@@ -120,44 +125,42 @@ def resources_to_description_file(
 #   |> reduce to_csv.from_entries
 
 
-def plan_metadata_inference(
-    state: ResourcePropertyGroupingState, llm: BaseChatModel | None = None
+def spread_metadata_inference(
+    state: ResourcePropertyGroupingState, dependencies: Dependencies | None = None
 ) -> ResourcePropertyGroupingState:
-    # FIXME: implement
-    warnings.warn("Planning is not yet implemented", RuntimeWarning)
-    return state
+    return [
+        Send(run_metadata_inference.__name__, {"resource": resource})
+        for resource in state["grouped_resource_entries"]
+    ]
 
 
-def pull_next_metadata_inference_step(
+def run_metadata_inference(
+    state: ResourcePropertyGroupMetadataInferenceState,
+    dependencies: Dependencies | None = None,
+) -> ResourcePropertyGroupingState:
+    resource_property_workflow, _ = rp_workflow.build_graph(dependencies)
+    metadata_result: ResourcePropertiesState = resource_property_workflow.invoke(
+        {"resource": state["resource"]}
+    )
+    processed_resource = GroupedGisResourceFileWithMetadata(
+        resource=state["resource"], metadata=metadata_result["updated_metadata"]
+    )
+    return {"metadata_enriched_resources": [processed_resource]}
+
+
+def collect_metadata(
     state: ResourcePropertyGroupingState,
+    destination_file: str,
 ) -> ResourcePropertyGroupingState:
-    # FIXME: implement
-    warnings.warn("Metadata inference execution is not yet implemented", RuntimeWarning)
-    return state
-
-
-def execute_metadata_inference_step(
-    state: ResourcePropertyGroupingState, llm: BaseChatModel | None = None
-) -> ResourcePropertyGroupingState:
-    # FIXME: implement
-    warnings.warn("Metadata inference is not yet implemented", RuntimeWarning)
-    return state
-
-
-def register_metadata_inference_step(
-    state: ResourcePropertyGroupingState, llm: BaseChatModel | None = None
-) -> ResourcePropertyGroupingState:
-    # FIXME: implement
-    warnings.warn("Metadata inference is not yet implemented", RuntimeWarning)
-    return state
-
-
-def is_query_plan_completed(
-    state: ResourcePropertyGroupingState,
-) -> QueryPlanExecutionState:
-    # FIXME: implement
-    warnings.warn("Metadata inference is not yet implemented", RuntimeWarning)
-    return QueryPlanExecutionState.STOP
+    resource_properties = state["metadata_enriched_resources"]
+    resource_properties_df = pd.DataFrame.from_records(
+        [
+            {"name": rp.resource.resource_name, **rp.metadata}
+            for rp in resource_properties
+        ]
+    )
+    resource_properties_df.to_csv(destination_file, index=False)
+    return {"processed_resource_dataframe_file": destination_file}
 
 
 # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~

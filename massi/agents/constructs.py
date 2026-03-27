@@ -100,6 +100,11 @@ class GroupedGisResourceFile(GISScoredFile):
     group_score: float
 
 
+class GroupedGisResourceFileWithMetadata(DictGetCompatibleModel):
+    resource: GroupedGisResourceFile
+    metadata: Metadata
+
+
 class GISScoringCollectionResponse(DictGetCompatibleModel):
     entries: list[GISScoredFile]
 
@@ -144,6 +149,7 @@ def flatten_resource_groups(
 
 type ResourceContext = dict
 type GISScoringCollection = list[GISScoredFile]
+type ResourceMetadataCollection = list[GroupedGisResourceFileWithMetadata]
 
 
 class ResourcePropertiesState(MessagesState, total=False):
@@ -166,7 +172,13 @@ class ResourcePropertyGroupingState(MessagesState, total=False):
     user_approved: bool
     gis_resource_groups: list[GisResourceGroup]
     grouped_resource_entries: list[GroupedGisResourceFile]
-    resource_dataframe_file: str
+    raw_resource_dataframe_file: str
+    metadata_enriched_resources: Annotated[ResourceMetadataCollection, operator.add]
+    processed_resource_dataframe_file: str
+
+
+class ResourcePropertyGroupMetadataInferenceState(MessagesState, total=False):
+    resource: GroupedGisResourceFile
 
 
 class BaseMetadataState(MessagesState, total=False):
