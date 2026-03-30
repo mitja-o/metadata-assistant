@@ -101,11 +101,13 @@ def execute_extraction(
         prefix=(
             "If you realise that it is not possible to extract the value from the provided file, report this realisation as your answer:\n"
             "```Thought: <reasoning that lead to the answer> \nFinal Answer: <explanation that the value can not be computed based on the given file>\n```\n"
-            "If the context provides sufficient information to answer the question without any computation, provide the answer directly.\n"
-            "Report the final result as ```\nThought: <reasoning that lead to the answer> \nFinal Answer: <value>\n```\n."
-            "ALWAYS adhere to the required output formats: `Thought-Action-Action_Input` for intermediate steps, and `Thought-Final_Answer` for final answers.\n\n"
+            # TODO(improvement): consider adding the shortcut back later
+            # "If the context provides sufficient information to answer the question without any computation, provide the answer directly.\n"
+            "ALWAYS report the final result as ```\nThought: <reasoning that lead to the answer> \nFinal Answer: <value>\n```\n."
+            "ALWAYS adhere to the required output formats described below: for intermediate steps - `Thought-Action-Action_Input`, and for final answers - `Thought-Final_Answer`.\n\n"
             f"Resource Context:\n<investigated-resource>\n{state.get("resource", {})}\n</investigated-resource>"
         ),
+        agent_executor_kwargs={"handle_parsing_errors": True},
     )
 
     system_msg = SystemMessage(

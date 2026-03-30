@@ -1,7 +1,6 @@
 import json
 import pathlib as pl
 from functools import partial
-from typing import Any
 
 from jsonschema.validators import Draft202012Validator
 from langchain_core.language_models import BaseChatModel
@@ -17,7 +16,6 @@ from massi.agents.constructs import (
     QueryPlan,
     QueryPlanExecutionState,
     QueryStep,
-    QueryStepId,
 )
 from massi.agents.inquiry_engine import get_next_step, is_plan_completed
 from massi.agents.interfaces import Dependencies, PromptClient
