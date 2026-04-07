@@ -10,13 +10,16 @@ from massi.agents.constructs import (
     MessageBuilder,
     MetadataUpdate,
     QueryPlan,
-    QueryPlanExecutionState,
     QueryStep,
     QueryStepId,
     ResourcePropertiesState,
 )
 from massi.agents.crafters.data_explorer import build_data_explorer_graph
-from massi.agents.inquiry_engine import get_next_step, is_plan_completed
+from massi.agents.inquiry_engine import (
+    QueryPlanExecutionState,
+    get_next_step,
+    is_plan_completed,
+)
 from massi.agents.interfaces import Dependencies
 
 # UC3: Resource Specific Properties

@@ -6,6 +6,7 @@ from langchain_core.language_models import BaseChatModel
 from langchain_core.messages import BaseMessage, HumanMessage, SystemMessage
 from langchain_experimental.agents.agent_toolkits import create_pandas_dataframe_agent
 from langgraph.graph import END, START, StateGraph
+from langgraph.graph.state import CompiledStateGraph
 from pydantic import BaseModel, Field
 
 from massi.agents.constructs import GroupedGisResourceFile, QueryStep
@@ -141,3 +142,8 @@ def build_data_explorer_graph(deps: Dependencies):
     builder.add_edge(execute_extraction.__name__, END)
 
     return builder.compile()
+
+
+type DataExplorerGraph = CompiledStateGraph[
+    DataExplorerState, None, DataExplorerState, DataExplorerState
+]

@@ -5,6 +5,7 @@ description = "(M)IAGIS (Assi)stant is an LLM-Agent helper for generating MIAGIS
 readme = "README.md"
 requires-python = ">=3.13"
 dependencies = [
+    "dishka>=1.9.1",
     "grandalf>=0.8",
     "ipython>=8.38.0",
     "ipywidgets>=8.1.8",
@@ -15,11 +16,13 @@ dependencies = [
     "langchain-ollama>=1.0.1",
     "langchain-openai>=1.1.9",
     "langgraph>=1.0.5",
+    "lxml>=6.0.2",
     "numpy>=2.4.4",
     "pandas>=3.0.0",
     "python-dotenv>=1.2.1",
+    "requests>=2.32.5",
     "tabulate>=0.10.0",
-    "wireup>=2.9.0",
+    "xmlschema>=4.3.1",
 ]
 
 [dependency-groups]

@@ -1,4 +1,13 @@
+from enum import Enum
+
 from massi.agents.constructs import QueryPlan, QueryStep, QueryStepId
+
+
+# TODO(refactor): this should be pulled out into a separate module
+# TODO(upstream-issue): enums don't work well with Langgraph's rendering
+class QueryPlanExecutionState(Enum):
+    STOP = 0
+    ACT = 1
 
 
 def get_next_step(
@@ -29,26 +38,6 @@ def get_next_step(
         if idx is not None and idx + 1 < len(plan.queries)
         else None
     )
-
-
-def get_previous_step(
-    plan: QueryPlan, current_step_id: QueryStepId
-) -> None | QueryStep:
-    """
-    Returns the step immediately preceding the current_step_id.
-
-    >>> step1 = QueryStep(id=1, key="a", json_path=".", priority=1, query="q1")
-    >>> step2 = QueryStep(id=2, key="b", json_path=".", priority=2, query="q2")
-    >>> plan = QueryPlan(queries=[step1, step2])
-    >>> get_previous_step(plan, 2).id
-    1
-    >>> get_previous_step(plan, 1) is None
-    True
-    """
-    indices = (i for i, s in enumerate(plan.queries) if s.id == current_step_id)
-    idx = next(indices, None)
-
-    return plan.queries[idx - 1] if idx is not None and idx > 0 else None
 
 
 def is_plan_completed(

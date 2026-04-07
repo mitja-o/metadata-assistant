@@ -2,7 +2,6 @@ import getpass as gp
 import operator
 import os.path as op
 import pathlib as pl
-from enum import Enum
 from typing import Annotated, Any, Self, TypedDict
 
 from langchain_core.messages import AIMessage
@@ -11,12 +10,6 @@ from pydantic import BaseModel
 
 # DTOs
 # ====
-
-
-# TODO(upstream-issue): enums don't work well with Langgraph's rendering
-class QueryPlanExecutionState(Enum):
-    STOP = 0
-    ACT = 1
 
 
 class MetadataValidationError(TypedDict):
@@ -196,6 +189,7 @@ class BaseMetadataState(MessagesState, total=False):
 
 # State -> LLM message templates
 # ==============================
+# TODO(refactor): this should be pulled out into a separate module
 
 
 class MessageBuilder:

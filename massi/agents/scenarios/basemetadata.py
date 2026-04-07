@@ -14,10 +14,13 @@ from massi.agents.constructs import (
     MessageBuilder,
     MetadataUpdate,
     QueryPlan,
-    QueryPlanExecutionState,
     QueryStep,
 )
-from massi.agents.inquiry_engine import get_next_step, is_plan_completed
+from massi.agents.inquiry_engine import (
+    QueryPlanExecutionState,
+    get_next_step,
+    is_plan_completed,
+)
 from massi.agents.interfaces import Dependencies, PromptClient
 
 # UC1: Base Metadata
