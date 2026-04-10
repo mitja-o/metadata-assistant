@@ -6,7 +6,6 @@ from typing import Any, Iterator, TypedDict
 
 import pandas as pd
 import xmlschema as xs
-from lxml import etree
 
 # file system
 # -----------
@@ -48,14 +47,17 @@ class CSVDetails(TypedDict):
     descriptive_stats: str
     column_count: int
     row_count: int
+    head_size: int
 
 
 def get_csv_details(csv: pl.Path) -> CSVDetails:
     df = pd.read_csv(csv)
+    head_size: int = 3
     details: CSVDetails = {
         "column_count": df.shape[1],
         "row_count": df.shape[0],
-        "head": df.head(3).to_csv(None, sep=","),
+        "head_size": head_size,
+        "head": df.head(head_size).to_csv(None, sep=","),
         "descriptive_stats": df.describe(include="all").to_csv(None, sep=","),
     }
     del df
