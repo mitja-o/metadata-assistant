@@ -5,7 +5,6 @@ description = "(M)IAGIS (Assi)stant is an LLM-Agent helper for generating MIAGIS
 readme = "README.md"
 requires-python = ">=3.13"
 dependencies = [
-    "dishka>=1.9.1",
     "duckdb>=1.5.1",
     "grandalf>=0.8",
     "ipython>=8.38.0",
@@ -33,11 +32,9 @@ dev = [
     "mypy>=1.19.1",
     "pytest>=9.0.2",
 ]
-experiments = [
-    "pypdf>=6.8.0",
-]
-observability = ["lmnr[all]>=0.7.40"]
-sandbox = ["duckdb>=1.4.4"]
+experiments = ["pypdf>=6.8.0"]
+observability = ["lmnr[all]==0.7.47"]
+sandbox = []
 
 [tool.pytest]
 minversion = "9.0"
