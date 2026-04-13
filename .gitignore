@@ -1,5 +1,6 @@
 # Development demo data files
 _demo/data
+_demo/dwc_data
 _demo/papers
 _evaluation/papers
 _evaluation/reports

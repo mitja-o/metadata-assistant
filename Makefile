@@ -3,7 +3,7 @@
 .PHONY: format
 format: pyproject.toml
 	uv run isort massi
-	uv run black massi
+	uv run black massi --target-version=py313
 
 .PHONY: clean-cache
 clean-cache: pyproject.toml

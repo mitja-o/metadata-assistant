@@ -57,8 +57,10 @@ def get_csv_details(csv: pl.Path) -> CSVDetails:
         "column_count": df.shape[1],
         "row_count": df.shape[0],
         "head_size": head_size,
-        "head": df.head(head_size).to_csv(None, sep=","),
-        "descriptive_stats": df.describe(include="all").to_csv(None, sep=","),
+        "head": df.head(head_size).to_csv(None, sep=",", index=False),
+        "descriptive_stats": df.describe(include="all").to_csv(
+            None, sep=",", index=False
+        ),
     }
     del df
     return details

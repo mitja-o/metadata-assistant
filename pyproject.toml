@@ -6,6 +6,7 @@ readme = "README.md"
 requires-python = ">=3.13"
 dependencies = [
     "dishka>=1.9.1",
+    "duckdb>=1.5.1",
     "grandalf>=0.8",
     "ipython>=8.38.0",
     "ipywidgets>=8.1.8",

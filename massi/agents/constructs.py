@@ -46,7 +46,7 @@ class QueryPlan(DictGetCompatibleModel):
     queries: list[QueryStep]
 
 
-class MetadataUpdate(DictGetCompatibleModel):
+class MetadataUpdate(TypedDict):
     metadata: Metadata
 
 
