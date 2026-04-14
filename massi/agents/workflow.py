@@ -138,6 +138,20 @@ class MetadataGapDerivationPlan(TypedDict):
     gaps: list[MetadataGapTask]
 
 
+class GapTaskValidation(TypedDict):
+    valid_pattern: bool
+    valid_files: bool
+
+
+class VerifiedMetadataGapTask(MetadataGapTask):
+    valid: bool
+    validation: GapTaskValidation
+
+
+class VerifiedMetadataGapDerivationPlan(TypedDict):
+    gaps: list[VerifiedMetadataGapTask]
+
+
 class MetadataGapDerivationResult(TypedDict):
     content: str
 
@@ -200,10 +214,12 @@ class MassiGoalResolutionState(MessagesState, total=False):
     dataset: DatasetFileCollection
     goal: MetadataGoal
     # working data
+    context_blocks: str
     architect_prompt: str
     architect_xml_blueprint: MetadataBlueprint
     working_copy_xml_blueprint: MetadataBlueprint
     gap_derivation_plan: MetadataGapDerivationPlan
+    verified_gap_derivation_plan: VerifiedMetadataGapDerivationPlan
     # TODO: make a better plan execution engine
     current_gap_task_pointer: int
     current_gap_instruction_prompt: str
@@ -217,6 +233,44 @@ class MassiCoreState(MessagesState, total=False):
     # working data
     dataset: DatasetFileCollection
     resolutions: Annotated[list[MassiGoalResolutionState], operator.add]
+
+
+# Data Mappers
+# ------------
+
+
+def validate_gap_task(
+    gap_task: MetadataGapTask, state: MassiGoalResolutionState | None = None
+) -> VerifiedMetadataGapTask:
+    blueprint: MetadataBlueprint = state["architect_xml_blueprint"]
+    validation: GapTaskValidation = {
+        "valid_pattern": gap_task["gap_replacement_pattern"] in blueprint["content"],
+        "valid_files": all(
+            (
+                bool(gap_task["gap_scope_files"]),
+                (
+                    set(gap_task["gap_scope_files"])
+                    <= set([str(f["location"]) for f in state["dataset"]["files"]])
+                ),
+            ),
+        ),
+    }
+    return {
+        **gap_task,
+        "valid": all((validation["valid_files"], validation["valid_pattern"])),
+        "validation": validation,
+    }
+
+
+def take_valid_plan_tasks(
+    state: MassiGoalResolutionState,
+) -> VerifiedMetadataGapDerivationPlan:
+    return {
+        **state["verified_gap_derivation_plan"],
+        "gaps": [
+            gt for gt in state["verified_gap_derivation_plan"]["gaps"] if gt["valid"]
+        ],
+    }
 
 
 # Message builders
@@ -250,26 +304,17 @@ class XMLBlueprint:
 
 class MetadataAgentPromptBuilder(ABC):
     @abstractmethod
-    def get_architect_prompt(self, context: MetadataArchitectPromptContext) -> str: ...
+    def get_context_blocks(self, context: MetadataArchitectPromptContext) -> str: ...
+    @abstractmethod
+    def get_architect_prompt(self, context: str) -> str: ...
     @abstractmethod
     def get_reviewer_prompt(self, architect_prompt: str, xml_blueprint: str) -> str: ...
 
 
 class MetadataArchitectPrompts(MetadataAgentPromptBuilder):
 
-    def get_architect_prompt(
-        self,
-        context: MetadataArchitectPromptContext,
-    ) -> str:
+    def get_context_blocks(self, context):
         return f"""
-## **PROMPT FOR SUB-AGENT: DwC-A XML ARCHITECT**
-
-### **Role**
-
-You are a precision XML Developer specializing in Darwin Core Archive (DwC-A) structures. Your task is to generate a `meta.xml` file that accurately reflects a **Star Schema** organization derived from a set of provided CSV files and an XSD metadata schema.
-
-### **Contextual Building Blocks**
-
 * **XSD Schema:**
 --- BEGIN: XSD Schema ---
 ```xml
@@ -286,6 +331,22 @@ You are a precision XML Developer specializing in Darwin Core Archive (DwC-A) st
 --- BEGIN: CSV Overview ---
 {context["csv_overview"]}
 --- END: CSV Overview ---
+""".strip()
+
+    def get_architect_prompt(
+        self,
+        context: MetadataArchitectPromptContext,
+    ) -> str:
+        return f"""
+## **PROMPT FOR SUB-AGENT: DwC-A XML ARCHITECT**
+
+### **Role**
+
+You are a precision XML Developer specializing in Darwin Core Archive (DwC-A) structures. Your task is to generate a `meta.xml` file that accurately reflects a **Star Schema** organization derived from a set of provided CSV files and an XSD metadata schema.
+
+### **Contextual Building Blocks**
+
+{context}
 
 ### **Task: Star Schema Identification**
 
@@ -340,8 +401,9 @@ Generate the XML following the `<archive>` structure. Where metadata is missing 
 ```
 """.strip()
 
-    def get_reviewer_prompt(self, architect_prompt: str, xml_blueprint: str) -> str:
-        # FIXME: implement
+    def get_reviewer_prompt(
+        self, context_blocks: str, architect_prompt: str, xml_blueprint: str
+    ) -> str:
         return f"""
 ## System Prompt: XML Blueprint Reviewer
 
@@ -389,7 +451,13 @@ Return the data in this structure:
 
 * **No Hallucinations:** Only include gaps explicitly marked in the Blueprint.
 * **Atomicity:** Each `gap_derivation_request` must be a self-contained prompt. Do not refer to "the previous message" or "other gaps."
+* **Grounding:** The `gap_scope_files` must be given and can not be empty. Specify the files that are most relevant based on the context and the blueprint structure. Only use the files specified in the Data Context section.
 * **Precision:** The `gap_replacement_pattern` must be an **exact string match** to allow for programmatic `string.replace()` operations later.
+* **Summary:** The `gap_description` must be concise and summarise the context in which the gap is found.
+
+### Data Context
+
+{context_blocks}
 
 ---
 
@@ -594,10 +662,13 @@ def start_metadata_derivation(
             state["goal"]["schema_source"]
         ).to_string(),
     }
-
-    architect_prompt = prompt_builder.get_architect_prompt(architect_context)
+    context_blocks = prompt_builder.get_context_blocks(architect_context)
+    architect_prompt = prompt_builder.get_architect_prompt(context_blocks)
     logger.debug(architect_prompt)
-    return {"architect_prompt": architect_prompt}
+    return {
+        "context_blocks": prompt_builder.get_context_blocks(architect_context),
+        "architect_prompt": architect_prompt,
+    }
 
 
 def build_blueprint_xml(
@@ -624,9 +695,11 @@ def make_gap_derivation_plan(
         state["goal"]["metadata_goal_key"]
     )
     reviewer_prompt = prompt_builder.get_reviewer_prompt(
-        state["architect_prompt"], blueprint["content"]
+        state["context_blocks"],
+        state["architect_prompt"],
+        blueprint["content"],
     )
-    result = reviewer_agent.invoke(reviewer_prompt)
+    result: MetadataGapDerivationPlan = reviewer_agent.invoke(reviewer_prompt)
     logger.debug(result)
 
     return {
@@ -639,17 +712,26 @@ def make_gap_derivation_plan(
 def verify_gap_derivation_plan(
     state: MassiGoalResolutionState,
 ) -> MassiGoalResolutionState:
-    blueprint = state["architect_xml_blueprint"]["content"]
     plan = state["gap_derivation_plan"]
-    assert all(
-        (g["gap_replacement_pattern"] in blueprint for g in plan["gaps"])
-    ), "Detected a gap replacement pattern that does not appear in the blueprint!"
-    return {}
+    gaps = plan["gaps"]
+    verified_plan: VerifiedMetadataGapDerivationPlan = {
+        **plan,
+        "gaps": list(map(partial(validate_gap_task, state=state), gaps)),
+    }
+
+    return {"verified_gap_derivation_plan": verified_plan}
 
 
 # *__Conditional__*
-def check_is_plan_completed(state: MassiGoalResolutionState) -> str:
-    total_steps_count = len(state["gap_derivation_plan"]["gaps"])
+def check_is_plan_usable(state: MassiGoalResolutionState) -> str:
+    valid_gap_tasks: VerifiedMetadataGapDerivationPlan = take_valid_plan_tasks(state)
+    total_steps_count = len(valid_gap_tasks["gaps"])
+
+    if total_steps_count < len(state["verified_gap_derivation_plan"]["gaps"]):
+        logger.warning(
+            "Some gap task are not valid and are not included for execution."
+        )
+
     current_pointer = state["current_gap_task_pointer"]
     completed = total_steps_count <= current_pointer
     return (
@@ -666,8 +748,9 @@ def prepare_derivation_instruction(
     gap_derivation_manager = dependencies.gap_derivation_manager_client
     assert gap_derivation_manager
 
+    valid_gap_tasks: VerifiedMetadataGapDerivationPlan = take_valid_plan_tasks(state)
     current_gap_task_pointer = state["current_gap_task_pointer"]
-    current_gap_task = state["gap_derivation_plan"]["gaps"][current_gap_task_pointer]
+    current_gap_task = valid_gap_tasks["gaps"][current_gap_task_pointer]
     logger.debug(current_gap_task)
 
     rich_instruction: str = gap_derivation_manager.invoke(
@@ -693,8 +776,9 @@ def execute_gap_derivation(
     )
     assert gap_derivation_executor
 
+    valid_gap_tasks: VerifiedMetadataGapDerivationPlan = take_valid_plan_tasks(state)
     current_task_pointer = state["current_gap_task_pointer"]
-    current_gap_task = state["gap_derivation_plan"]["gaps"][current_task_pointer]
+    current_gap_task = valid_gap_tasks["gaps"][current_task_pointer]
     current_gap_instruction = state["current_gap_instruction_prompt"]
 
     result = gap_derivation_executor.invoke(current_gap_instruction, current_gap_task)
@@ -760,7 +844,7 @@ def _build_goal_resolution_graph(
     # * export if completed, otherwise process
     builder.add_conditional_edges(
         verify_gap_derivation_plan.__name__,
-        check_is_plan_completed,
+        check_is_plan_usable,
         [prepare_derivation_instruction.__name__, export_metadata.__name__],
     )
     builder.add_edge(
