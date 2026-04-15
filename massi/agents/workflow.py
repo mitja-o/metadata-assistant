@@ -285,6 +285,17 @@ def take_valid_plan_tasks(
     }
 
 
+def patch_metadata(
+    outcome: MetadataGapTaskOutcome, blueprint: MetadataBlueprint
+) -> MetadataBlueprint:
+    outcome_content = outcome["result"]["content"].strip('"')
+    logger.debug(outcome_content)
+    gap_replacement_tag = outcome["task"]["gap_replacement_pattern"]
+    logger.debug(gap_replacement_tag)
+    patched_content = blueprint["content"].replace(gap_replacement_tag, outcome_content)
+    return {**blueprint, "content": patched_content}
+
+
 # Message builders
 # ----------------
 
@@ -320,7 +331,7 @@ class MetadataAgentPromptBuilder(ABC):
     @abstractmethod
     def get_architect_prompt(self, context: str) -> str: ...
     @abstractmethod
-    def get_reviewer_prompt(self, architect_prompt: str, xml_blueprint: str) -> str: ...
+    def get_planner_prompt(self, architect_prompt: str, xml_blueprint: str) -> str: ...
 
 
 class MetadataArchitectPrompts(MetadataAgentPromptBuilder):
@@ -413,11 +424,11 @@ Generate the XML following the `<archive>` structure. Where metadata is missing 
 ```
 """.strip()
 
-    def get_reviewer_prompt(
+    def get_planner_prompt(
         self, context_blocks: str, architect_prompt: str, xml_blueprint: str
     ) -> str:
         return f"""
-## System Prompt: XML Blueprint Reviewer
+## System Prompt: XML Blueprint Derivation Planner
 
 ### Role
 
@@ -473,7 +484,7 @@ Return the data in this structure:
 
 ---
 
-## Review Execution
+## Review and Planning Execution
 
 **Please process the following input:**
 
@@ -499,7 +510,7 @@ class MetadataArchitect(ABC):
     def invoke(self, prompt: str) -> MetadataBlueprint: ...
 
 
-class MetadataBlueprintReviewer(ABC):
+class MetadataBlueprintPlanner(ABC):
     @abstractmethod
     def invoke(self, prompt: str) -> MetadataGapDerivationPlan: ...
 
@@ -522,15 +533,6 @@ class MetadataGapDerivationExecutor(ABC):
         prompt: str,
         task: MetadataGapTask,
     ) -> MetadataGapTaskOutcome: ...
-
-
-class MetadataGapPatcher(ABC):
-    @abstractmethod
-    def invoke(
-        self,
-        outcome: MetadataGapTaskOutcome,
-        blueprint: MetadataBlueprint,
-    ) -> MetadataBlueprint: ...
 
 
 # Workflow implementation
@@ -559,11 +561,10 @@ class Dependencies:
     execution_mode: MassiExecutionMode = MassiExecutionMode.HUMAN_INQUIRY
 
     architect_client: MetadataArchitect | None = None
-    reviewer_client: MetadataBlueprintReviewer | None = None
+    planner_client: MetadataBlueprintPlanner | None = None
     gap_derivation_manager_client: MetadataGapDerivationManager | None = None
     data_explorer_client: MetadataGapDerivationExecutor | None = None
     author_interviewer_client: MetadataGapDerivationExecutor | None = None
-    metadata_gap_patcher_client: MetadataGapPatcher | None = None
 
     metadata_resolution_subgraph: MassiWorkflow[MassiResolutionWorkflowGraph] | None = (
         None
@@ -699,19 +700,19 @@ def make_gap_derivation_plan(
     state: MassiGoalResolutionState, dependencies: Dependencies | None = None
 ) -> MassiGoalResolutionState:
     assert dependencies
-    reviewer_agent = dependencies.reviewer_client
-    assert reviewer_agent
+    planner_agent = dependencies.planner_client
+    assert planner_agent
 
     blueprint = state["architect_xml_blueprint"]
     prompt_builder = METADATA_AGENT_PROMPT_BUILDER_REGISTRY.get(
         state["goal"]["metadata_goal_key"]
     )
-    reviewer_prompt = prompt_builder.get_reviewer_prompt(
+    planner_prompt = prompt_builder.get_planner_prompt(
         state["context_blocks"],
         state["architect_prompt"],
         blueprint["content"],
     )
-    plan: MetadataGapDerivationPlan = reviewer_agent.invoke(reviewer_prompt)
+    plan: MetadataGapDerivationPlan = planner_agent.invoke(planner_prompt)
     logger.debug(plan)
 
     refined_plan: MetadataGapDerivationPlan = {
@@ -804,14 +805,8 @@ def execute_gap_derivation(
     return {"last_gap_derivation_result": result}
 
 
-def synthesize_metadata(
-    state: MassiGoalResolutionState, dependencies: Dependencies | None = None
-) -> MassiGoalResolutionState:
-    assert dependencies
-    metadata_gap_patcher = dependencies.metadata_gap_patcher_client
-    assert metadata_gap_patcher
-
-    updated_blueprint = metadata_gap_patcher.invoke(
+def synthesize_metadata(state: MassiGoalResolutionState) -> MassiGoalResolutionState:
+    updated_blueprint = patch_metadata(
         state["last_gap_derivation_result"],
         state["working_copy_xml_blueprint"],
     )
@@ -845,7 +840,7 @@ def _build_goal_resolution_graph(
         (verify_gap_derivation_plan, {}),
         (prepare_derivation_instruction, {"dependencies": dependencies}),
         (execute_gap_derivation, {"dependencies": dependencies}),
-        (synthesize_metadata, {"dependencies": dependencies}),
+        (synthesize_metadata, {}),
         (export_metadata, {}),
     ]
     for fn, kwargs in nodes:
