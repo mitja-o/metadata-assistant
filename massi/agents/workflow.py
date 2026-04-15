@@ -239,6 +239,18 @@ class MassiCoreState(MessagesState, total=False):
 # ------------
 
 
+def normalize_gap_file_paths(
+    gap_task: MetadataGapTask, state: MassiGoalResolutionState | None = None
+) -> MetadataGapTask:
+    state_file_path_maps = {
+        p["location"].name: str(p["location"]) for p in state["dataset"]["files"]
+    }
+    normalised_files = [
+        state_file_path_maps.get(Path(f).name, f) for f in gap_task["gap_scope_files"]
+    ]
+    return {**gap_task, "gap_scope_files": normalised_files}
+
+
 def validate_gap_task(
     gap_task: MetadataGapTask, state: MassiGoalResolutionState | None = None
 ) -> VerifiedMetadataGapTask:
@@ -451,7 +463,7 @@ Return the data in this structure:
 
 * **No Hallucinations:** Only include gaps explicitly marked in the Blueprint.
 * **Atomicity:** Each `gap_derivation_request` must be a self-contained prompt. Do not refer to "the previous message" or "other gaps."
-* **Grounding:** The `gap_scope_files` must be given and can not be empty. Specify the files that are most relevant based on the context and the blueprint structure. Only use the files specified in the Data Context section.
+* **Grounding:** The `gap_scope_files` must be given and can not be empty. Specify the files that are most relevant based on the context and the blueprint structure. ALWAYS use the exact file paths specified in the Data Context section.
 * **Precision:** The `gap_replacement_pattern` must be an **exact string match** to allow for programmatic `string.replace()` operations later.
 * **Summary:** The `gap_description` must be concise and summarise the context in which the gap is found.
 
@@ -699,11 +711,17 @@ def make_gap_derivation_plan(
         state["architect_prompt"],
         blueprint["content"],
     )
-    result: MetadataGapDerivationPlan = reviewer_agent.invoke(reviewer_prompt)
-    logger.debug(result)
+    plan: MetadataGapDerivationPlan = reviewer_agent.invoke(reviewer_prompt)
+    logger.debug(plan)
+
+    refined_plan: MetadataGapDerivationPlan = {
+        **plan,
+        "gaps": list(map(partial(normalize_gap_file_paths, state=state), plan["gaps"])),
+    }
+    logger.info(refined_plan)
 
     return {
-        "gap_derivation_plan": result,
+        "gap_derivation_plan": refined_plan,
         "current_gap_task_pointer": 0,
         "working_copy_xml_blueprint": blueprint,
     }

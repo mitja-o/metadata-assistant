@@ -34,6 +34,11 @@ class DataExplorerResponse(TypedDict):
     success: bool
     status: Literal["rejected", "completed"]
     outcome: str
+    result_value: str | None
+    """
+    The final value that should be entered in the upstream metadata record. 
+    None if the outcome is not successful.
+    """
 
 
 # State
@@ -59,12 +64,25 @@ class DataExplorerState(MessagesState, total=False):
 
 class PromptBuilder:
     @staticmethod
+    def recursion_limit_context_rule(current_turn: int = 0, turn_limit: int = 5) -> str:
+        return f"""
+### RECURSION & BUDGET REFLECTION
+- **Current Turn Depth**: {current_turn}
+- **Maximum Depth**: {turn_limit} turns
+- Before every tool call, self-reflect: "Is this query likely to succeed, or am I repeating a failure?"
+- If you have reached Turn 8 or higher and still haven't found the answer, DO NOT continue guessing. 
+- If you cannot find the output due to schema issues, missing data, or repeated SQL errors, STOP immediately.
+- In case of failure to find a value, report the following default error message in the relevant field: "ERROR: Analysis exceeded budget or data structure is incompatible."
+"""
+
+    @classmethod
     def sytem_prompt(
+        cls,
         workspace_manifest: str,
         db_dialect: str = "DuckDB",
         db_top_k: int = 10000,
         current_turn: int = 0,
-        recursion_limit: int = 25,
+        turn_limit: int = 5,
     ) -> str:
         return f"""
 ### ROLE
@@ -78,7 +96,7 @@ You MUST use these absolute paths in your SQL 'FROM' clauses:
 You are an expert data analyst interacting with a {db_dialect} database.
 Given an input question, create a syntactically correct {db_dialect} SQL query to run, then look at the results and return the answer.
 
-{db_dialect} Specifics:
+#### {db_dialect} Specifics:
 - Use {db_dialect}-specific functions where appropriate (e.g., EPOCH for scalar time extraction, STRFTIME for formatting).
 - {db_dialect} supports reading directly from Parquet/CSVs.
 - Never use PostgreSQL-specific functions that do not exist in {db_dialect}.
@@ -88,13 +106,7 @@ Given an input question, create a syntactically correct {db_dialect} SQL query t
 
 Only use the tables available to you. Do NOT hallucinate table names.
 
-### RECURSION & BUDGET REFLECTION
-- **Current Turn Depth**: {current_turn}
-- **Maximum Depth**: {recursion_limit} turns
-- Before every tool call, self-reflect: "Is this query likely to succeed, or am I repeating a failure?"
-- If you have reached Turn 8 or higher and still haven't found the answer, DO NOT continue guessing. 
-- If you cannot find the output due to schema issues, missing data, or repeated SQL errors, STOP immediately.
-- In case of failure to find a value, report the following default error message in the relevant field: "ERROR: Analysis exceeded budget or data structure is incompatible."
+{cls.recursion_limit_context_rule(current_turn, turn_limit)}
 
 ### TOOL GUIDELINES
 1. **Schema First**: Always call `query_dataset` with `DESCRIBE SELECT * FROM '/path/to/file.csv'` to verify structure.
@@ -111,6 +123,10 @@ Only use the tables available to you. Do NOT hallucinate table names.
 - Only use SQL.
 - Use `ILIKE` for case-insensitive text search.
 - Detect and flag PII for the `contains_pii` boolean.
+
+### TOOL CALLS RESTRICTIONS
+- You are an assistant with access to tools. Call at most one tool per turn. If multiple steps are needed, call one, wait for results, then continue.
+- If after {turn_limit} turns you do not get a satisfactory answer, report the default error message: "ERROR: Analysis exceeded budget or data structure is incompatible."
 """.strip()
 
     @staticmethod
@@ -146,6 +162,44 @@ Do NOT attempt to call any SQL tools. Generate a final response that follows thi
 {request}
 
 Return your response as a clear, technical summary.
+""".strip()
+
+    @staticmethod
+    def summarize_exploration_prompt(exploration_outcome: str) -> str:
+        return f"""
+### ROLE
+You are the _massi_ Output Formatter. Your task is to distill raw technical exploration logs into a structured JSON response.
+
+### INPUT DATA
+The raw outcome of the data exploration process is:
+---
+{exploration_outcome}
+---
+
+### EXTRACTION RULES
+1. **success**: 
+   - Set to `true` if a specific value, identifier, or answer requested in the instruction was found.
+   - Set to `false` if the agent encountered a terminal error, reached a recursion limit, or explicitly stated the information is missing.
+2. **status**: 
+   - Use `"rejected"` ONLY if the initial request was malformed or lacked files/instructions.
+   - Use `"completed"` for all other cases where an analysis was attempted.
+3. **outcome**: 
+   - Provide a concise (1-2 sentences) professional summary of the discovery path (e.g., "Identified column 'X' as the primary key and extracted the corresponding URI").
+4. **result_value**:
+   - This is the **Target Value**. It represents the specific "answer" to the query.
+   - **Priority**: If the output contains a URI, a formal ID, a specific category label, or a calculated metric (sum/count), extract that value alone.
+   - **Cleaning**: Remove ALL markdown formatting (backticks, bolding, italics).
+   - **Constraint**: If the result is a description rather than a single value, provide the most significant keyword or identifier from that description.
+   - Set to `null` if no definitive value could be isolated.
+
+### OUTPUT FORMAT
+Return ONLY a valid JSON object.
+{{
+    "success": bool,
+    "status": "rejected" | "completed",
+    "outcome": "string", 
+    "result_value": "string" | null
+}}
 """.strip()
 
 
@@ -203,13 +257,17 @@ def standardise_input_files(state: DataExplorerState) -> DataExplorerState:
     for idx, path_str in enumerate(state["request"]["file_paths"]):
         source = Path(path_str)
 
-        target_name = f"data_{idx}_{source.name.replace('.txt', '.csv')}"
+        standard_name = (
+            source.name if source.suffix in [".csv"] else (source.name + ".csv")
+        )
+        target_name = f"data_{idx}_{standard_name}"
         target_path = workspace / target_name
 
         if source.suffix.lower() in [".csv"]:
             df = pd.read_csv(source)
             df.to_csv(target_path, index=False)
-        else:
+        elif source.suffix.lower() in [".txt"]:
+
             text = source.read_text(encoding="utf-8")
             chunks = [text[i : i + 500] for i in range(0, len(text), 500)]
             pd.DataFrame(
@@ -229,11 +287,12 @@ def call_explorer_agent(
     model = props["llm_client"]
     assert model
     tools = [query_dataset]
-    tool_using_agent = model.bind_tools(tools)
+    tool_using_agent = model.bind_tools(tools, parallel_tool_calls=False)
 
     current_turn = len(
         [m for m in state["messages"] if isinstance(m, HumanMessage)]
     ) + (len(state["messages"]) // 2)
+    turn_limit = 5
     workspace_manifest = "\n".join(
         [
             f"- {source}: Use path '{workspace_path}'"
@@ -242,12 +301,11 @@ def call_explorer_agent(
     )
 
     system_prompt = PromptBuilder.sytem_prompt(
-        workspace_manifest,
-        current_turn=current_turn,
-        recursion_limit=props["recursion_limit"],
+        workspace_manifest, current_turn=current_turn, turn_limit=turn_limit
     )
     system_input = SystemMessage(content=system_prompt)
-    user_input = HumanMessage(content=state["request"]["instruction"])
+    user_prompt = f"{PromptBuilder.recursion_limit_context_rule(current_turn=current_turn, turn_limit=turn_limit)}\n\n{state["request"]["instruction"]}"
+    user_input = HumanMessage(content=user_prompt)
 
     inputs = [system_input] + state["messages"] + [user_input]
     response = tool_using_agent.invoke(inputs)
@@ -276,7 +334,7 @@ def summarise_output_result(
     model = props["llm_client"]
     assert model
     result = state["exploration_result"]
-    assessment_request = PromptBuilder.request_output_assessment(result)
+    assessment_request = PromptBuilder.summarize_exploration_prompt(result)
     response: DataExplorerResponse = model.with_structured_output(
         DataExplorerResponse
     ).invoke(assessment_request)
@@ -302,17 +360,26 @@ def create_explorer_subgraph(props: DataExplorerProps):
 
     builder.add_node(TOOL_NODE, ToolNode([query_dataset]))
     nodes = [
+        (refuse_processing, {"props": props}),
         (standardise_input_files, {}),
         (call_explorer_agent, {"props": props}),
         (cleanup, {}),
-        (get_final_exploration_output, {}),
+        (get_final_exploration_result, {}),
+        (summarise_output_result, {"props": props}),
     ]
     for fn, kwargs in nodes:
         node_name = fn.__name__
         node_func = partial(fn, **kwargs) if kwargs else fn
         builder.add_node(node_name, node_func)
 
-    builder.add_edge(START, standardise_input_files.__name__)
+    builder.add_conditional_edges(
+        START,
+        check_for_usable_request,
+        [refuse_processing.__name__, standardise_input_files.__name__],
+    )
+    # Refusal branch
+    builder.add_edge(refuse_processing.__name__, summarise_output_result.__name__)
+    # Exploration branch
     builder.add_edge(standardise_input_files.__name__, call_explorer_agent.__name__)
     # Tool loop for the agent to iteratively perform analysis
     builder.add_conditional_edges(
@@ -321,8 +388,11 @@ def create_explorer_subgraph(props: DataExplorerProps):
         [TOOL_NODE, cleanup.__name__],
     )
     builder.add_edge(TOOL_NODE, call_explorer_agent.__name__)
-    builder.add_edge(cleanup.__name__, get_final_exploration_output.__name__)
-    builder.add_edge(get_final_exploration_output.__name__, END)
+    builder.add_edge(cleanup.__name__, get_final_exploration_result.__name__)
+    builder.add_edge(
+        get_final_exploration_result.__name__, summarise_output_result.__name__
+    )
+    builder.add_edge(summarise_output_result.__name__, END)
 
     return builder.compile()
 
@@ -332,7 +402,7 @@ def create_explorer_subgraph(props: DataExplorerProps):
 
 
 class DataExplorerAgent:
-    def __init__(self, model: BaseChatModel, recursion_limit: int = 10):
+    def __init__(self, model: BaseChatModel, recursion_limit: int = 25):
         self._model = model
         self._recursion_limit = recursion_limit
         self.client = create_explorer_subgraph(
