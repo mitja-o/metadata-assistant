@@ -5,8 +5,13 @@ format: pyproject.toml
 	uv run isort massi
 	uv run black massi --target-version=py313
 
+.PHONY: clean-build-artifacts
+clean-build-artifacts clean-build: pyproject.toml
+	rm -rf build
+	rm -rf dist
+
 .PHONY: clean-cache
-clean-cache: pyproject.toml
+clean-cache: pyproject.toml clean-build-artifacts
 	find . -type d -name "__pycache__" -exec rm -r {} +
 	find . -type f -name "*.pyc" -exec rm -f {} +
 	find . -type f -name "*.pyo" -exec rm -f {} +

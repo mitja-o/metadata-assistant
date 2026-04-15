@@ -2,7 +2,7 @@ import logging
 import operator
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
-from enum import IntEnum, StrEnum
+from enum import StrEnum
 from functools import partial
 from pathlib import Path
 from typing import Annotated, TypedDict
@@ -12,8 +12,23 @@ from langgraph.graph import END, START, MessagesState, StateGraph
 from langgraph.graph.state import CompiledStateGraph
 from langgraph.types import Send
 
+from massi.agents.team._dto import (
+    CSVOverview,
+    DatasetFileCollection,
+    FileOverview,
+    GapTaskValidation,
+    MetadataBlueprint,
+    MetadataGapDerivationPlan,
+    MetadataGapTask,
+    MetadataGapTaskOutcome,
+    MetadataGoal,
+    VerifiedMetadataGapDerivationPlan,
+    VerifiedMetadataGapTask,
+)
+from massi.agents.team.architect import ArchitectContextProps, MetadataArchitect
+from massi.agents.team.operators import GapDerivationOperator
+from massi.agents.team.planner import MetadataBlueprintPlanner
 from massi.agents.tools import (
-    CSVDetails,
     get_csv_details,
     get_file_stats,
     get_xmlschema_validator,
@@ -25,158 +40,6 @@ from massi.agents.tools import (
 
 # logging.basicConfig(stream=sys.stdout, level=logging.DEBUG)
 logger = logging.getLogger(__name__)
-
-# Data constructs
-# ---------------
-
-
-class MetadataScope(StrEnum):
-    """REF: See Gilliland's "Setting the Stage" (2000)."""
-
-    DESCRIPTIVE = "descriptive"
-    """Citation and discovery data: DOI, creators, spatial/temporal coverage, and domain keywords."""
-
-    ADMINISTRATIVE = "administrative"
-    """Governance data: funding sources, PII handling, IP licenses, and data sharing agreements."""
-
-    PRESERVATION = "preservation"
-    """Fixity and integrity data: checksums, archival formats, and bit-level replication logs."""
-
-    TECHNICAL = "technical"
-    """Execution environment: sensor specs, software versions, CLI parameters, and schema definitions."""
-
-    USE = "use"
-    """Telemetry and impact: citation counts, download metrics, and re-analysis provenance logs."""
-
-
-class MetadataLevel(IntEnum):
-    """REF: See Gilliland's "Setting the Stage" (2000)."""
-
-    COLLECTION = 0
-    """Contextual schema for the entire study, campaign, or longitudinal dataset series."""
-
-    ITEM = 1
-    """Granular metadata for a single observation, file, sample, or granular data point."""
-
-
-class MetadataArchitectPromptContext(TypedDict):
-    xsd_schema: str
-    file_overview: str
-    csv_overview: str
-
-
-class MetadataGoal(TypedDict):
-    """A goal of Metadata construction.
-
-    Examples:
-        >>> import requests
-        >>> from massi.agents.tools import get_xmlschema_validator
-
-        >>> dwc_data_file_metadata_goal: MetadataGoal = {   # doctest:
-        ...     "level": MetadataLevel.ITEM,
-        ...     "scopes": [MetadataScope.DESCRIPTIVE, MetadataScope.TECHNICAL, MetadataScope.USE],
-        ...     "target_filename": "meta.xml",
-        ...     "schema_source": "https://dwc.tdwg.org/text/tdwg_dwc_text.xsd",
-        ...     "description": (
-        ...         "This metadata file describes the archive and data file structure."
-        ...         "A descriptor metafile describes how the files in your archive are organized."
-        ...         "It describes the files in the archive and maps each data column to a corresponding standard Darwin Core or Extension term."
-        ...         "The metafile is a relatively simple XML file format."
-        ...     ),
-        ...     "metadata_goal_key": "darwin_core",
-        ... }
-        >>> get_xmlschema_validator(dwc_data_file_metadata_goal["schema_source"]) # doctest: +ELLIPSIS
-        MassiXMLSchemaXmlschemalWrapper(schema=XMLSchema10...)
-
-        >>> dwc_eml_metadata_goal: MetadataGoal = {         # doctest:
-        ...     "level": MetadataLevel.COLLECTION,
-        ...     "scopes": [
-        ...         MetadataScope.DESCRIPTIVE,
-        ...         MetadataScope.ADMINISTRATIVE,
-        ...         MetadataScope.PRESERVATION,
-        ...         MetadataScope.USE,
-        ...     ],
-        ...     "target_filename": "eml.xml",
-        ...     "schema_source": "https://eml.ecoinformatics.org/eml-2.2.0/eml.xsd",
-        ...     "description": (
-        ...         "This metadata file contains the dataset's aggregate metadata."
-        ...         "This is a resource metadata document that provides information about the dataset itself such as a description (abstract) of the dataset, the agents responsible for authorship, publication and documentation, bibliographic and citation information, collection methods and much more."
-        ...         "It is based on the Ecological Metadata Language."
-        ...     ),
-        ...     "metadata_goal_key": "eml",
-        ... }
-        >>> get_xmlschema_validator(dwc_eml_metadata_goal["schema_source"]) # doctest: +ELLIPSIS
-        MassiXMLSchemaXmlschemalWrapper(schema=XMLSchema10...)
-    """
-
-    scopes: list[MetadataScope]
-    level: MetadataLevel
-    target_filename: str
-    # schema: AbstractXMLSchema
-    schema_source: str
-    description: str | None
-    metadata_goal_key: str
-
-
-class MetadataBlueprint(TypedDict):
-    content: str
-
-
-class MetadataGapTask(TypedDict):
-    gap_id: str
-    gap_type: str
-    gap_description: str
-    gap_replacement_pattern: str
-    """Exact match match of how the gap appears in the blueprint."""
-    gap_scope_files: list[str]
-    """List of file paths relevant for filling in the gap"""
-    gap_derivation_request: str
-    """A prompt aimed at a Gap Derivation Agent, to request the derivation of the needed information. Prompt should include sufficient context and give a clear derivation instruction. The prompt should include a strategy for a 'meaningful default' if a reliable value can not be derived."""
-
-
-class MetadataGapDerivationPlan(TypedDict):
-    gaps: list[MetadataGapTask]
-
-
-class GapTaskValidation(TypedDict):
-    valid_pattern: bool
-    valid_files: bool
-
-
-class VerifiedMetadataGapTask(MetadataGapTask):
-    valid: bool
-    validation: GapTaskValidation
-
-
-class VerifiedMetadataGapDerivationPlan(TypedDict):
-    gaps: list[VerifiedMetadataGapTask]
-
-
-class MetadataGapDerivationResult(TypedDict):
-    content: str
-
-
-class MetadataGapTaskOutcome(TypedDict):
-    task: MetadataGapTask
-    result: MetadataGapDerivationResult
-
-
-class MetadataExport(TypedDict):
-    destination_file: Path
-
-
-class FileOverview(TypedDict):
-    location: Path
-    stats: str
-
-
-class CSVOverview(FileOverview):
-    details: CSVDetails
-
-
-class DatasetFileCollection(TypedDict):
-    files: list[FileOverview]
-    csv_files: list[CSVOverview]
 
 
 # Configurations
@@ -193,10 +56,10 @@ class MassiRuntimeConfiguration(TypedDict):
 
 
 class MassiExecutionMode(StrEnum):
-    HUMAN_INQUIRY = "human-focused"
+    HUMAN_INQUIRY = "human"
     """Focuses on human inquiry - interview the user about their dataset."""
 
-    DATA_INQUIRY = "data-focused"
+    DATA_INQUIRY = "data"
     """Focuses on automated data exploration - derive metadata from the dataset autonomously."""
 
 
@@ -296,223 +159,8 @@ def patch_metadata(
     return {**blueprint, "content": patched_content}
 
 
-# Message builders
-# ----------------
-
-
-class XMLBlueprint:
-    @staticmethod
-    def get_gap_pattern(
-        gap_id: str = "GAP_XXX",
-        gap_type: str = "TYPE",
-        gap_description: str = "DESCRIPTION",
-    ) -> str:
-        return f"{{{{{gap_id}:{gap_type}:{gap_description}}}}}"
-
-    @staticmethod
-    def get_gap_type_description() -> str:
-        return """
-* **INDEX:** Use for `0-based` column positions.
-* **URI:** Use for the `rowType` or `term` attributes.
-* **STRING:** Use for general file attributes (e.g., `encoding`, `fieldsTerminatedBy`).
-""".strip()
-
-    @classmethod
-    def get_mapping_rules(cls) -> str:
-        return f"""
-* **Term Mapping:** If a CSV header name matches a known Darwin Core term, use that URI for the `term` attribute; **otherwise**, generate a `{cls.get_gap_pattern(gap_type="URI", gap_description="HEADER_NAME")}` placeholder.
-* **Index Mapping:** If the column index can be provided with absolute certainty from the CSV header order, specify it directly (e.g., `index="0"`); **otherwise**, generate a `{cls.get_gap_pattern(gap_type="INDEX", gap_description="COLUMN_NAME")}` placeholder.
-""".strip()
-
-
-class MetadataAgentPromptBuilder(ABC):
-    @abstractmethod
-    def get_context_blocks(self, context: MetadataArchitectPromptContext) -> str: ...
-    @abstractmethod
-    def get_architect_prompt(self, context: str) -> str: ...
-    @abstractmethod
-    def get_planner_prompt(self, architect_prompt: str, xml_blueprint: str) -> str: ...
-
-
-class MetadataArchitectPrompts(MetadataAgentPromptBuilder):
-
-    def get_context_blocks(self, context):
-        return f"""
-* **XSD Schema:**
---- BEGIN: XSD Schema ---
-```xml
-{context["xsd_schema"]}
-```
---- END: XSD Schema ---
-
-* **Dataset file overview:**
---- BEGIN: Dataset file overview ---
-{context["file_overview"]}
---- END: Dataset file overview ---
-
-* **CSV Overview:**
---- BEGIN: CSV Overview ---
-{context["csv_overview"]}
---- END: CSV Overview ---
-""".strip()
-
-    def get_architect_prompt(
-        self,
-        context: MetadataArchitectPromptContext,
-    ) -> str:
-        return f"""
-## **PROMPT FOR SUB-AGENT: DwC-A XML ARCHITECT**
-
-### **Role**
-
-You are a precision XML Developer specializing in Darwin Core Archive (DwC-A) structures. Your task is to generate a `meta.xml` file that accurately reflects a **Star Schema** organization derived from a set of provided CSV files and an XSD metadata schema.
-
-### **Contextual Building Blocks**
-
-{context}
-
-### **Task: Star Schema Identification**
-
-Before generating the XML, you must analyze the relationship between the provided CSV files to establish the Star Schema:
-
-* **Identify the Core:** Locate the primary entity file (the "Core") which contains the base records (e.g., Events or Taxa) that other files reference.
-* **Identify Extensions:** Locate subordinate files (the "Extensions") that provide many-to-one supplemental data to the Core records.
-* **Identify the Linkage:** Determine the specific column (the foreign key) used to join Extension records back to the Core's unique identifier.
-
-### **Technical Logic & Mapping Rules**
-
-Generate the XML following the `<archive>` structure. Where metadata is missing or ambiguous, you must insert placeholders using the syntax: `{XMLBlueprint.get_gap_pattern()}`.
-
-**1. Disambiguation of Gap TYPEs:**
-
-{XMLBlueprint.get_gap_type_description()}
-
-**2. Strict Mapping Rules:**
-
-{XMLBlueprint.get_mapping_rules()}
-
-### **Mapping Instructions**
-
-1. **Archive Attributes:** Set the `metadata` attribute to a `URI` gap.
-2. **Core Component:** * Identify the appropriate `rowType` URI.
-    * Map the primary key to the `<id>` element.
-    * Map all remaining columns to `<field>` elements using the Mapping Rules above.
-3. **Extension Components:**
-    * For each extension, map the foreign key to the `<coreid>` element.
-    * Map extension columns to `<field>` elements using the Mapping Rules above.
-
-### **Expected Output Format**
-
-```xml
-<?xml version="1.0" encoding="UTF-8"?>
-<archive xmlns="http://rs.tdwg.org/dwc/text/" metadata="{XMLBlueprint.get_gap_pattern(gap_id="GAP_001", gap_type="URI", gap_description="METADATA_LOCATION")}">
-  <core rowType="[CORE_URI]" fieldsTerminatedBy="," fieldsEnclosedBy="&quot;" ignoreHeaderLines="1">
-    <files>
-      <location>[CORE_FILENAME]</location>
-    </files>
-    <id index="[PRIMARY_KEY_INDEX]" />
-    <field index="1" term="http://rs.tdwg.org/dwc/terms/exampleTerm"/>
-    <field index="{XMLBlueprint.get_gap_pattern(gap_id="GAP_002", gap_type="INDEX", gap_description="UNCERTAIN_COL")}" term="{XMLBlueprint.get_gap_pattern(gap_id="GAP_003", gap_type="URI", gap_description="UNMAPPED_HEADER")}"/>
-  </core>
-  <extension rowType="[EXTENSION_URI]">
-    <files>
-      <location>[EXTENSION_FILENAME]</location>
-    </files>
-    <coreid index="[FOREIGN_KEY_INDEX]" />
-    </extension>
-</archive>
-```
-""".strip()
-
-    def get_planner_prompt(
-        self, context_blocks: str, architect_prompt: str, xml_blueprint: str
-    ) -> str:
-        return f"""
-## System Prompt: XML Blueprint Derivation Planner
-
-### Role
-
-You are a **Technical Metadata Analyst** specializing in Darwin Core (DwC) standards and XML Schema validation. Your purpose is to bridge the gap between a high-level XML blueprint and actionable data exploration tasks.
-
-### Input Context
-
-You will be provided with:
-
-1. **The Original Design Context:** The XSD schema goals and high-level overviews of the available CSV datasets (columns and headers).
-2. **The XML Blueprint:** A draft `meta.xml` or DwC-Archive metadata file containing placeholders in the format `{{GAP_ID:GAP_TYPE:GAP_DESCRIPTION}}`.
-
-### Instructions
-
-1. **Analyze the Blueprint:** Locate every placeholder matching the pattern `{{GAP_ID:GAP_TYPE:GAP_DESCRIPTION}}`.
-2. **Scope Determination:** For each gap, identify which CSV file(s) from the Dataset Inventory contain the raw data necessary to resolve it (e.g., if the gap is in `dwc:scientificName`, scope it to the file containing taxonomic strings).
-3. **Draft Derivation Requests:** Write a specific, standalone instruction for the **Gap Derivation Agent**. This agent can execute Python/SQL to explore CSVs. Your instruction must:
-    * State exactly what to look for.
-    * Provide logic for handling anomalies (e.g., "If `eventDate` is null, use the file's 'Date Collected' column").
-    * Define a **Meaningful Default** (e.g., "If no coordinate system is found, default to 'WGS84'").
-4. **Output Format:** Return a valid JSON list of objects matching the `MetadataGap` schema.
-
----
-
-### Extraction Schema
-
-Return the data in this structure:
-
-```json
-{{"gaps": [
-  {{
-    "gap_id": "Unique string from the gap pattern",
-    "gap_type": "The category (e.g., Attribute, Element, Mapping)",
-    "gap_description": "Brief explanation of what is missing",
-    "gap_replacement_pattern": "The exact full string to be replaced (e.g., '{XMLBlueprint.get_gap_pattern(gap_id="GAP_001", gap_type="URI", gap_description="METADATA_LOCATION")}')",
-    "gap_scope_files": ["list_of_relevant_filenames.csv"],
-    "gap_derivation_request": "Detailed prompt for the execution agent. Include: 1. Goal 2. Column logic 3. Transformation rules (if any) 4. Fallback/Default value strategy."
-  }}
-]}}
-```
-
-### Constraints & Quality Gates
-
-* **No Hallucinations:** Only include gaps explicitly marked in the Blueprint.
-* **Atomicity:** Each `gap_derivation_request` must be a self-contained prompt. Do not refer to "the previous message" or "other gaps."
-* **Grounding:** The `gap_scope_files` must be given and can not be empty. Specify the files that are most relevant based on the context and the blueprint structure. ALWAYS use the exact file paths specified in the Data Context section.
-* **Precision:** The `gap_replacement_pattern` must be an **exact string match** to allow for programmatic `string.replace()` operations later.
-* **Summary:** The `gap_description` must be concise and summarise the context in which the gap is found.
-
-### Data Context
-
-{context_blocks}
-
----
-
-## Review and Planning Execution
-
-**Please process the following input:**
-
-**[ORIGINAL CONTEXT]**
-{architect_prompt}
-
-**[XML BLUEPRINT]**
-{xml_blueprint}
-"""
-
-
-METADATA_AGENT_PROMPT_BUILDER_REGISTRY: dict[str, MetadataAgentPromptBuilder] = {
-    "darwin_core": MetadataArchitectPrompts()
-}
-
-
 # Service interfaces
 # ------------------
-
-
-class MetadataArchitect(ABC):
-    @abstractmethod
-    def invoke(self, prompt: str) -> MetadataBlueprint: ...
-
-
-class MetadataBlueprintPlanner(ABC):
-    @abstractmethod
-    def invoke(self, prompt: str) -> MetadataGapDerivationPlan: ...
 
 
 class MetadataGapDerivationManager(ABC):
@@ -560,11 +208,10 @@ class MassiWorkflow[T]:
 class Dependencies:
     execution_mode: MassiExecutionMode = MassiExecutionMode.HUMAN_INQUIRY
 
-    architect_client: MetadataArchitect | None = None
-    planner_client: MetadataBlueprintPlanner | None = None
+    architect_map: dict[str, MetadataArchitect] | None = None
+    planner_map: dict[str, MetadataBlueprintPlanner] | None = None
     gap_derivation_manager_client: MetadataGapDerivationManager | None = None
-    data_explorer_client: MetadataGapDerivationExecutor | None = None
-    author_interviewer_client: MetadataGapDerivationExecutor | None = None
+    derivation_map: dict[MassiExecutionMode, GapDerivationOperator] | None = None
 
     metadata_resolution_subgraph: MassiWorkflow[MassiResolutionWorkflowGraph] | None = (
         None
@@ -622,8 +269,7 @@ def map_goals(state: MassiCoreState) -> MassiCoreState:
 
 # -- Subgraph invokation
 def run_metadata_derivation_goal(
-    state: MassiGoalResolutionState,
-    dependencies: Dependencies,
+    state: MassiGoalResolutionState, dependencies: Dependencies
 ) -> MassiCoreState:
     assert dependencies.metadata_resolution_subgraph
     resolution_subgraph: MassiResolutionWorkflowGraph = (
@@ -647,15 +293,15 @@ def terminate(state: MassiCoreState) -> MassiCoreState:
 
 # -- Subgraph
 def start_metadata_derivation(
-    state: MassiGoalResolutionState,
+    state: MassiGoalResolutionState, dependencies: Dependencies | None = None
 ) -> MassiGoalResolutionState:
-    prompt_builder = METADATA_AGENT_PROMPT_BUILDER_REGISTRY.get(
-        state["goal"]["metadata_goal_key"]
-    )
-    assert (
-        prompt_builder
-    ), f"Could not create a prompt builder instance - using unknown metadata goal key: {state["goal"]["metadata_goal_key"]}."
+    assert dependencies
+    assert dependencies.architect_map
+    goal_key = state["goal"]["metadata_goal_key"]
+    architect_agent = dependencies.architect_map.get(goal_key)
+    assert architect_agent
 
+    # FIXME(refactor): move this to a separate function
     csv_overview = "\n".join(
         [
             f'==> {c["location"]} <==\n-- head ({c["details"]["head_size"]}/{c["details"]["row_count"]} rows) --\n```csv\n{c["details"]["head"]}\n```\n-- column descriptive statistics ({c["details"]["column_count"]} columns) --\n```csv\n{c["details"]["descriptive_stats"]}\n```'
@@ -668,18 +314,18 @@ def start_metadata_derivation(
             for fl in state["dataset"]["files"]
         ]
     )
-    architect_context: MetadataArchitectPromptContext = {
+    architect_context: ArchitectContextProps = {
         "csv_overview": csv_overview,
         "file_overview": file_overvew,
         "xsd_schema": get_xmlschema_validator(
             state["goal"]["schema_source"]
         ).to_string(),
     }
-    context_blocks = prompt_builder.get_context_blocks(architect_context)
-    architect_prompt = prompt_builder.get_architect_prompt(context_blocks)
+    context_blocks = architect_agent.get_context_prompt_block(architect_context)
+    architect_prompt = architect_agent.get_system_prompt(context_blocks)
     logger.debug(architect_prompt)
     return {
-        "context_blocks": prompt_builder.get_context_blocks(architect_context),
+        "context_blocks": context_blocks,
         "architect_prompt": architect_prompt,
     }
 
@@ -688,7 +334,9 @@ def build_blueprint_xml(
     state: MassiGoalResolutionState, dependencies: Dependencies | None = None
 ) -> MassiGoalResolutionState:
     assert dependencies
-    architect_agent = dependencies.architect_client
+    assert dependencies.architect_map
+    goal_key = state["goal"]["metadata_goal_key"]
+    architect_agent = dependencies.architect_map.get(goal_key)
     assert architect_agent
 
     result = architect_agent.invoke(state["architect_prompt"])
@@ -700,14 +348,13 @@ def make_gap_derivation_plan(
     state: MassiGoalResolutionState, dependencies: Dependencies | None = None
 ) -> MassiGoalResolutionState:
     assert dependencies
-    planner_agent = dependencies.planner_client
+    assert dependencies.architect_map
+    goal_key = state["goal"]["metadata_goal_key"]
+    planner_agent = dependencies.planner_map.get(goal_key)
     assert planner_agent
 
     blueprint = state["architect_xml_blueprint"]
-    prompt_builder = METADATA_AGENT_PROMPT_BUILDER_REGISTRY.get(
-        state["goal"]["metadata_goal_key"]
-    )
-    planner_prompt = prompt_builder.get_planner_prompt(
+    planner_prompt = planner_agent.get_system_prompt(
         state["context_blocks"],
         state["architect_prompt"],
         blueprint["content"],
@@ -715,14 +362,14 @@ def make_gap_derivation_plan(
     plan: MetadataGapDerivationPlan = planner_agent.invoke(planner_prompt)
     logger.debug(plan)
 
-    refined_plan: MetadataGapDerivationPlan = {
+    normalised_plan: MetadataGapDerivationPlan = {
         **plan,
         "gaps": list(map(partial(normalize_gap_file_paths, state=state), plan["gaps"])),
     }
-    logger.info(refined_plan)
+    logger.info(normalised_plan)
 
     return {
-        "gap_derivation_plan": refined_plan,
+        "gap_derivation_plan": normalised_plan,
         "current_gap_task_pointer": 0,
         "working_copy_xml_blueprint": blueprint,
     }
@@ -787,20 +434,17 @@ def execute_gap_derivation(
     state: MassiGoalResolutionState, dependencies: Dependencies | None = None
 ) -> MassiGoalResolutionState:
     assert dependencies
-    # Select the executor based on the condfigured mode:
-    gap_derivation_executor = (
-        dependencies.data_explorer_client
-        if dependencies.execution_mode == MassiExecutionMode.DATA_INQUIRY
-        else dependencies.author_interviewer_client
-    )
-    assert gap_derivation_executor
+    assert dependencies.derivation_map
+    execution_mode = dependencies.execution_mode
+    operator = dependencies.derivation_map.get(execution_mode)
+    assert operator
 
     valid_gap_tasks: VerifiedMetadataGapDerivationPlan = take_valid_plan_tasks(state)
     current_task_pointer = state["current_gap_task_pointer"]
     current_gap_task = valid_gap_tasks["gaps"][current_task_pointer]
     current_gap_instruction = state["current_gap_instruction_prompt"]
 
-    result = gap_derivation_executor.invoke(current_gap_instruction, current_gap_task)
+    result = operator.invoke(current_gap_instruction, current_gap_task)
 
     return {"last_gap_derivation_result": result}
 
@@ -834,7 +478,7 @@ def _build_goal_resolution_graph(
     builder = StateGraph(MassiGoalResolutionState)
 
     nodes = [
-        (start_metadata_derivation, {}),
+        (start_metadata_derivation, {"dependencies": dependencies}),
         (build_blueprint_xml, {"dependencies": dependencies}),
         (make_gap_derivation_plan, {"dependencies": dependencies}),
         (verify_gap_derivation_plan, {}),
