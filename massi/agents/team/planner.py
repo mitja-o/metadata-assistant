@@ -5,7 +5,6 @@ from langchain.messages import HumanMessage
 
 from massi.agents.team._dto import MetadataGapDerivationPlan, XMLBlueprintGapPattern
 
-
 # Agent Protocol
 # --------------
 

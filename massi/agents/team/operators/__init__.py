@@ -1,7 +1,11 @@
-from abc import ABC, abstractmethod
 import json
+from abc import ABC, abstractmethod
 
-from massi.agents.team._dto import MetadataGapTask, MetadataGapTaskOutcome
+from massi.agents.team._dto import (
+    MetadataGapTask,
+    MetadataGapTaskOutcome,
+    XMLBlueprintGapPattern,
+)
 from massi.agents.team.operators.data_explorer import (
     DataExplorerAgent,
     DataExplorerResponse,
@@ -31,10 +35,15 @@ class DataGapDervationOperator(GapDerivationOperator):
     def invoke(self, prompt: str, task: MetadataGapTask) -> MetadataGapTaskOutcome:
         request = {"instruction": prompt, "file_paths": task["gap_scope_files"]}
         response: DataExplorerResponse = self._agent.invoke(request)["final_output"]
+
         if response["result_value"]:
             result = response["result_value"]
         else:
             result = json.dumps(
-                f"{response["success"]=}:{response["status"]}:{response["outcome"]}"
+                XMLBlueprintGapPattern.get_gap_pattern(
+                    task["gap_id"],
+                    f'{task["gap_type"]}-{response["success"]=}-{response["status"]=}',
+                    {response["outcome"]},
+                )
             )
         return {"result": {"content": result}, "task": task}

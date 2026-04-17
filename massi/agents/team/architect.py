@@ -6,7 +6,6 @@ from langchain.messages import HumanMessage
 
 from massi.agents.team._dto import MetadataBlueprint, XMLBlueprintGapPattern
 
-
 # Local DTOs
 # ----------
 

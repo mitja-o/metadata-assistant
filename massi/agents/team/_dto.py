@@ -2,9 +2,7 @@
 
 from enum import IntEnum, StrEnum
 from pathlib import Path
-from typing import TypedDict
-
-from massi.agents.tools import CSVDetails
+from typing import Literal, TypedDict
 
 # Data Transfer Objects
 # ---------------------
@@ -37,6 +35,9 @@ class MetadataLevel(IntEnum):
 
     ITEM = 1
     """Granular metadata for a single observation, file, sample, or granular data point."""
+
+
+type SupportedMetadataGoals = Literal["darwin_core", "eml"]
 
 
 class MetadataGoal(TypedDict):
@@ -89,7 +90,7 @@ class MetadataGoal(TypedDict):
     # schema: AbstractXMLSchema
     schema_source: str
     description: str | None
-    metadata_goal_key: str
+    metadata_goal_key: SupportedMetadataGoals
 
 
 class MetadataBlueprint(TypedDict):
@@ -142,6 +143,15 @@ class MetadataExport(TypedDict):
 class FileOverview(TypedDict):
     location: Path
     stats: str
+
+
+class CSVDetails(TypedDict):
+    raw_head: str
+    dataframe_head: str
+    descriptive_stats: str
+    column_count: int
+    row_count: int
+    head_size: int
 
 
 class CSVOverview(FileOverview):

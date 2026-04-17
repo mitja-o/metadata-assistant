@@ -1,6 +1,5 @@
 import logging
 import operator
-from abc import ABC, abstractmethod
 from dataclasses import dataclass
 from enum import StrEnum
 from functools import partial
@@ -22,16 +21,18 @@ from massi.agents.team._dto import (
     MetadataGapTask,
     MetadataGapTaskOutcome,
     MetadataGoal,
+    SupportedMetadataGoals,
     VerifiedMetadataGapDerivationPlan,
     VerifiedMetadataGapTask,
 )
 from massi.agents.team.architect import ArchitectContextProps, MetadataArchitect
+from massi.agents.team.managers import GapDerivationManager
 from massi.agents.team.operators import GapDerivationOperator
 from massi.agents.team.planner import MetadataBlueprintPlanner
 from massi.agents.tools import (
-    get_csv_details,
     get_file_stats,
     get_xmlschema_validator,
+    safe_get_csv_details,
     walk_working_dir_for_files,
 )
 
@@ -98,6 +99,43 @@ class MassiCoreState(MessagesState, total=False):
     resolutions: Annotated[list[MassiGoalResolutionState], operator.add]
 
 
+# Workflow Protocol
+# -----------------
+
+type MassiCoreWorkflowGraph = CompiledStateGraph[
+    MassiCoreState, None, MassiCoreState, MassiCoreState
+]
+type MassiResolutionWorkflowGraph = CompiledStateGraph[
+    MassiGoalResolutionState, None, MassiGoalResolutionState, MassiGoalResolutionState
+]
+
+
+@dataclass
+class MassiWorkflow[T]:
+    graph: T
+    execution_settings: dict[str, any]
+
+
+# Dependencies
+# ------------
+
+
+@dataclass
+class Dependencies:
+    execution_mode: MassiExecutionMode = MassiExecutionMode.HUMAN_INQUIRY
+
+    architect_map: dict[SupportedMetadataGoals, MetadataArchitect] | None = None
+    planner_map: dict[SupportedMetadataGoals, MetadataBlueprintPlanner] | None = None
+    gap_derivation_manager_map: (
+        dict[MassiExecutionMode, GapDerivationManager] | None
+    ) = None
+    derivation_map: dict[MassiExecutionMode, GapDerivationOperator] | None = None
+
+    metadata_resolution_subgraph: MassiWorkflow[MassiResolutionWorkflowGraph] | None = (
+        None
+    )
+
+
 # Data Mappers
 # ------------
 
@@ -159,71 +197,8 @@ def patch_metadata(
     return {**blueprint, "content": patched_content}
 
 
-# Service interfaces
-# ------------------
-
-
-class MetadataGapDerivationManager(ABC):
-    @abstractmethod
-    def invoke(
-        self,
-        task: MetadataGapTask,
-        execution_mode: MassiExecutionMode,
-        architect_prompt: str,
-        xml_blueprint: str,
-    ) -> str: ...
-
-
-class MetadataGapDerivationExecutor(ABC):
-    @abstractmethod
-    def invoke(
-        self,
-        prompt: str,
-        task: MetadataGapTask,
-    ) -> MetadataGapTaskOutcome: ...
-
-
-# Workflow implementation
-# -----------------------
-
-type MassiCoreWorkflowGraph = CompiledStateGraph[
-    MassiCoreState, None, MassiCoreState, MassiCoreState
-]
-type MassiResolutionWorkflowGraph = CompiledStateGraph[
-    MassiGoalResolutionState, None, MassiGoalResolutionState, MassiGoalResolutionState
-]
-
-
-@dataclass
-class MassiWorkflow[T]:
-    graph: T
-    execution_settings: dict[str, any]
-
-
-# Dependencies
-# ------------
-
-
-@dataclass
-class Dependencies:
-    execution_mode: MassiExecutionMode = MassiExecutionMode.HUMAN_INQUIRY
-
-    architect_map: dict[str, MetadataArchitect] | None = None
-    planner_map: dict[str, MetadataBlueprintPlanner] | None = None
-    gap_derivation_manager_client: MetadataGapDerivationManager | None = None
-    derivation_map: dict[MassiExecutionMode, GapDerivationOperator] | None = None
-
-    metadata_resolution_subgraph: MassiWorkflow[MassiResolutionWorkflowGraph] | None = (
-        None
-    )
-
-
 # Workflow nodes
 # --------------
-
-
-# FIXME(implement): produce the nodes of the following graph
-#   Inventory -> Plan -> (Execution -a-> (Operation => Execution) -b-> (Synthesis -> Export)) => Inventory
 
 
 def _refine_initalisation(state: MassiCoreState) -> MassiCoreState:
@@ -242,12 +217,15 @@ def inventorize_dataset(state: MassiCoreState) -> MassiCoreState:
     file_overviews: list[FileOverview] = [
         {"location": p, "stats": str(s)} for (p, s) in paths
     ]
-    csv_overviews: list[CSVOverview] = [
-        {**f, "details": get_csv_details(f["location"])}
+    # FIXME(formats): Darwin Core also often uses `.txt` (TSV) files. I need to account for that too.
+    tabular_file_overviews: list[CSVOverview] = [
+        {**f, "details": details}
         for f in file_overviews
-        if f["location"].suffix == ".csv"
+        if f["location"].suffix.lower() in (".csv", ".txt")
+        and (details := safe_get_csv_details(f["location"]))
+        and bool(details)
     ]
-    return {"dataset": {"files": file_overviews, "csv_files": csv_overviews}}
+    return {"dataset": {"files": file_overviews, "csv_files": tabular_file_overviews}}
 
 
 # -- Map
@@ -281,9 +259,9 @@ def run_metadata_derivation_goal(
 
 
 def terminate(state: MassiCoreState) -> MassiCoreState:
-    # FIXME(implement): should summarise the results and exit
     logger.debug("Reached the end")
     logger.debug(f"{state=}")
+    logger.info(f"Resolved: {len(state["resolutions"])} / {len(state["goals"])}")
     return {}
 
 
@@ -301,10 +279,16 @@ def start_metadata_derivation(
     architect_agent = dependencies.architect_map.get(goal_key)
     assert architect_agent
 
-    # FIXME(refactor): move this to a separate function
+    # TODO(refactor): move this to a separate function
     csv_overview = "\n".join(
         [
-            f'==> {c["location"]} <==\n-- head ({c["details"]["head_size"]}/{c["details"]["row_count"]} rows) --\n```csv\n{c["details"]["head"]}\n```\n-- column descriptive statistics ({c["details"]["column_count"]} columns) --\n```csv\n{c["details"]["descriptive_stats"]}\n```'
+            (
+                f'==> {c["location"]} <==\n'
+                f'-- head ({c["details"]["head_size"]} / {c["details"]["row_count"]} rows) --\n'
+                f'```csv\n{c["details"]["raw_head"]}\n```'
+                f'\n-- column descriptive statistics ({c["details"]["column_count"]} columns) --\n'
+                f'```csv\n{c["details"]["descriptive_stats"]}\n```'
+            )
             for c in state["dataset"]["csv_files"]
         ]
     )
@@ -411,20 +395,22 @@ def prepare_derivation_instruction(
     state: MassiGoalResolutionState, dependencies: Dependencies | None = None
 ) -> MassiGoalResolutionState:
     assert dependencies
-    gap_derivation_manager = dependencies.gap_derivation_manager_client
-    assert gap_derivation_manager
+    assert dependencies.gap_derivation_manager_map
+    execution_mode = dependencies.execution_mode
+    manager = dependencies.gap_derivation_manager_map.get(execution_mode)
+    assert manager
 
     valid_gap_tasks: VerifiedMetadataGapDerivationPlan = take_valid_plan_tasks(state)
     current_gap_task_pointer = state["current_gap_task_pointer"]
     current_gap_task = valid_gap_tasks["gaps"][current_gap_task_pointer]
     logger.debug(current_gap_task)
 
-    rich_instruction: str = gap_derivation_manager.invoke(
+    instruction_prompt = manager.get_instruction_prompt(
         current_gap_task,
-        dependencies.execution_mode,
         state["architect_prompt"],
         state["working_copy_xml_blueprint"]["content"],
     )
+    rich_instruction: str = manager.invoke(instruction_prompt)
     logger.debug(rich_instruction)
 
     return {"current_gap_instruction_prompt": rich_instruction}
@@ -462,9 +448,16 @@ def synthesize_metadata(state: MassiGoalResolutionState) -> MassiGoalResolutionS
 
 
 def export_metadata(state: MassiGoalResolutionState) -> MassiGoalResolutionState:
-    # FIXME(implement): should store the metadata file into the specified target
     logger.debug("Reached the end")
     logger.debug(f"{state=}")
+    working_metadata = state["working_copy_xml_blueprint"]["content"]
+    out_file = state["goal"]["target_filename"]
+    out_dir = Path(state["settings"]["runtime_config"]["output_directory"])
+
+    out_dir.mkdir(exist_ok=True)
+    output_file = out_dir / out_file
+
+    output_file.write_text(working_metadata)
     return {}
 
 

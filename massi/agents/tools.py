@@ -1,11 +1,16 @@
+import logging
 import os
 import pathlib as pl
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
-from typing import Any, Iterator, TypedDict
+from typing import Any, Iterator
 
 import pandas as pd
 import xmlschema as xs
+
+from massi.agents.team._dto import CSVDetails
+
+logger = logging.getLogger(__name__)
 
 # file system
 # -----------
@@ -42,28 +47,31 @@ def get_file_stats(path: pl.Path) -> tuple[pl.Path, os.stat_result]:
     return (path, path.stat())
 
 
-class CSVDetails(TypedDict):
-    head: str
-    descriptive_stats: str
-    column_count: int
-    row_count: int
-    head_size: int
-
-
 def get_csv_details(csv: pl.Path) -> CSVDetails:
+    head_size: int = 5
+    with open(csv) as fp:
+        raw_head = "\n".join([next(fp) for _ in range(head_size)])
     df = pd.read_csv(csv)
-    head_size: int = 3
     details: CSVDetails = {
         "column_count": df.shape[1],
         "row_count": df.shape[0],
         "head_size": head_size,
-        "head": df.head(head_size).to_csv(None, sep=",", index=False),
+        "raw_head": raw_head,
+        "dataframe_head": df.head(head_size).to_csv(None, sep=",", index=False),
         "descriptive_stats": df.describe(include="all").to_csv(
             None, sep=",", index=False
         ),
     }
     del df
     return details
+
+
+def safe_get_csv_details(csv: pl.Path) -> CSVDetails | None:
+    try:
+        return get_csv_details(csv)
+    except Exception as e:
+        logger.warning(e)
+        return None
 
 
 class AbstractXMLSchema(ABC):
