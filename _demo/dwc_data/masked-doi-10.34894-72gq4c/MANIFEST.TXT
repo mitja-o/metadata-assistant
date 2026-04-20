@@ -1,5 +1,0 @@
-budburst_meta.xml (text/xml) 4198 bytes.
-budburst_EML.xml (text/xml) 9497 bytes.
-budburst_event.csv (text/csv) 19919400 bytes.
-budburst_extendedmeasurementorfact.csv (text/csv) 23804914 bytes.
-budburst_occurrence.csv (text/csv) 15323870 bytes.
