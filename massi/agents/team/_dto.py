@@ -116,11 +116,15 @@ class MetadataGapDerivationPlan(TypedDict):
 class GapTaskValidation(TypedDict):
     valid_pattern: bool
     valid_files: bool
+    tabular_files: list[str]
+    plaintext_files: list[str]
 
 
 class VerifiedMetadataGapTask(MetadataGapTask):
     valid: bool
     validation: GapTaskValidation
+    gap_scope_tabular_files: list[str]
+    gap_scope_plaintext_files: list[str]
 
 
 class VerifiedMetadataGapDerivationPlan(TypedDict):

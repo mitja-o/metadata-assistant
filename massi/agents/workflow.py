@@ -120,8 +120,7 @@ class MassiWorkflow[T]:
 # ------------
 
 
-@dataclass
-class Dependencies:
+class Dependencies(TypedDict, total=False):
     execution_mode: MassiExecutionMode = MassiExecutionMode.HUMAN_INQUIRY
 
     architect_map: dict[SupportedMetadataGoals, MetadataArchitect] | None = None
@@ -155,23 +154,30 @@ def normalize_gap_file_paths(
 def validate_gap_task(
     gap_task: MetadataGapTask, state: MassiGoalResolutionState | None = None
 ) -> VerifiedMetadataGapTask:
+    dataset_files = set((str(f["location"]) for f in state["dataset"]["files"]))
+    dataset_csv_files = set((str(f["location"]) for f in state["dataset"]["csv_files"]))
     blueprint: MetadataBlueprint = state["architect_xml_blueprint"]
     validation: GapTaskValidation = {
         "valid_pattern": gap_task["gap_replacement_pattern"] in blueprint["content"],
         "valid_files": all(
             (
                 bool(gap_task["gap_scope_files"]),
-                (
-                    set(gap_task["gap_scope_files"])
-                    <= set([str(f["location"]) for f in state["dataset"]["files"]])
-                ),
+                (set(gap_task["gap_scope_files"]) <= dataset_files),
             ),
         ),
+        "tabular_files": [
+            f for f in gap_task["gap_scope_files"] if f in dataset_csv_files
+        ],
+        "plaintext_files": [
+            f for f in gap_task["gap_scope_files"] if f not in dataset_csv_files
+        ],
     }
     return {
         **gap_task,
         "valid": all((validation["valid_files"], validation["valid_pattern"])),
         "validation": validation,
+        "gap_scope_plaintext_files": validation["plaintext_files"],
+        "gap_scope_tabular_files": validation["tabular_files"],
     }
 
 
@@ -249,10 +255,8 @@ def map_goals(state: MassiCoreState) -> MassiCoreState:
 def run_metadata_derivation_goal(
     state: MassiGoalResolutionState, dependencies: Dependencies
 ) -> MassiCoreState:
-    assert dependencies.metadata_resolution_subgraph
-    resolution_subgraph: MassiResolutionWorkflowGraph = (
-        dependencies.metadata_resolution_subgraph.graph
-    )
+    assert dependencies["metadata_resolution_subgraph"]
+    resolution_subgraph = dependencies["metadata_resolution_subgraph"].graph
     resolution: MassiGoalResolutionState = resolution_subgraph.invoke(state)
     logger.debug(resolution)
     return {"resolutions": [resolution]}
@@ -274,9 +278,9 @@ def start_metadata_derivation(
     state: MassiGoalResolutionState, dependencies: Dependencies | None = None
 ) -> MassiGoalResolutionState:
     assert dependencies
-    assert dependencies.architect_map
+    assert dependencies["architect_map"]
     goal_key = state["goal"]["metadata_goal_key"]
-    architect_agent = dependencies.architect_map.get(goal_key)
+    architect_agent = dependencies["architect_map"].get(goal_key)
     assert architect_agent
 
     # TODO(refactor): move this to a separate function
@@ -318,9 +322,9 @@ def build_blueprint_xml(
     state: MassiGoalResolutionState, dependencies: Dependencies | None = None
 ) -> MassiGoalResolutionState:
     assert dependencies
-    assert dependencies.architect_map
+    assert dependencies["architect_map"]
     goal_key = state["goal"]["metadata_goal_key"]
-    architect_agent = dependencies.architect_map.get(goal_key)
+    architect_agent = dependencies["architect_map"].get(goal_key)
     assert architect_agent
 
     result = architect_agent.invoke(state["architect_prompt"])
@@ -332,9 +336,9 @@ def make_gap_derivation_plan(
     state: MassiGoalResolutionState, dependencies: Dependencies | None = None
 ) -> MassiGoalResolutionState:
     assert dependencies
-    assert dependencies.architect_map
+    assert dependencies["architect_map"]
     goal_key = state["goal"]["metadata_goal_key"]
-    planner_agent = dependencies.planner_map.get(goal_key)
+    planner_agent = dependencies["planner_map"].get(goal_key)
     assert planner_agent
 
     blueprint = state["architect_xml_blueprint"]
@@ -395,9 +399,9 @@ def prepare_derivation_instruction(
     state: MassiGoalResolutionState, dependencies: Dependencies | None = None
 ) -> MassiGoalResolutionState:
     assert dependencies
-    assert dependencies.gap_derivation_manager_map
-    execution_mode = dependencies.execution_mode
-    manager = dependencies.gap_derivation_manager_map.get(execution_mode)
+    assert dependencies["gap_derivation_manager_map"]
+    execution_mode = dependencies["execution_mode"]
+    manager = dependencies["gap_derivation_manager_map"].get(execution_mode)
     assert manager
 
     valid_gap_tasks: VerifiedMetadataGapDerivationPlan = take_valid_plan_tasks(state)
@@ -420,9 +424,9 @@ def execute_gap_derivation(
     state: MassiGoalResolutionState, dependencies: Dependencies | None = None
 ) -> MassiGoalResolutionState:
     assert dependencies
-    assert dependencies.derivation_map
-    execution_mode = dependencies.execution_mode
-    operator = dependencies.derivation_map.get(execution_mode)
+    assert dependencies["derivation_map"]
+    execution_mode = dependencies["execution_mode"]
+    operator = dependencies["derivation_map"].get(execution_mode)
     assert operator
 
     valid_gap_tasks: VerifiedMetadataGapDerivationPlan = take_valid_plan_tasks(state)

@@ -26,7 +26,9 @@ test: pyproject.toml
 
 .PHONY: evaluate
 evaluate: pyproject.toml _evaluation
-	uv run --group dev --group experiments --group sandbox pytest _evaluation
+	mkdir -p _evaluation/reports/runs/
+	uv run --group dev --group experiments --group sandbox pytest _evaluation \
+		| tee '_evaluation/reports/runs/run-$(shell date +%s).txt'
 
 # Developer hints
 # ===============

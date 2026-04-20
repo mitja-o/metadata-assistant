@@ -8,7 +8,12 @@ from typing import Literal, TypedDict
 import duckdb
 import pandas as pd
 from langchain.chat_models import BaseChatModel
-from langchain_core.messages import BaseMessage, HumanMessage, SystemMessage
+from langchain_core.messages import (
+    BaseMessage,
+    HumanMessage,
+    RemoveMessage,
+    SystemMessage,
+)
 from langchain_core.tools import tool
 from langgraph.graph import END, START, MessagesState, StateGraph
 from langgraph.prebuilt import ToolNode
@@ -21,11 +26,14 @@ logger = logging.getLogger(__name__)
 class DataExplorerProps(TypedDict):
     llm_client: BaseChatModel | None = None
     recursion_limit: int = 15
+    turn_limit: int = 7
 
 
 class DataExplorerRequest(TypedDict):
-    file_paths: list[str]
-    """Path to the source files"""
+    plaintext_files: list[str]
+    """Path to all non-tabular source files"""
+    tabular_files: list[str]
+    """Path to all tabular source files"""
     instruction: str
     """The specific task from the parent graph"""
 
@@ -45,6 +53,11 @@ class DataExplorerResponse(TypedDict):
 # -----
 
 
+class DEFAULTS:
+    tabular_prefix = "tab_"
+    plaintext_prefix = "ref_"
+
+
 class DataExplorerState(MessagesState, total=False):
     request: DataExplorerRequest
     """The request sent to the data explorer"""
@@ -52,6 +65,10 @@ class DataExplorerState(MessagesState, total=False):
     """Path to the standardized CSV files ready for analysis"""
     file_map: dict[str, str]
     """Map of original input files to their workspace copies"""
+    current_turn: int = 0
+    """Current turn of the exploration."""
+    progress_summary: str
+    """Summary of the progress and actions take so far"""
     exploration_result: BaseMessage
     """Final result of the exploration."""
     final_output: DataExplorerResponse
@@ -67,13 +84,47 @@ class PromptBuilder:
     def recursion_limit_context_rule(current_turn: int = 0, turn_limit: int = 5) -> str:
         return f"""
 ### RECURSION & BUDGET REFLECTION
-- **Current Turn Depth**: {current_turn}
-- **Maximum Depth**: {turn_limit} turns
+
+**Current Turn Depth**: {current_turn}
+**Maximum Depth**: {turn_limit} turns
+
 - Before every tool call, self-reflect: "Is this query likely to succeed, or am I repeating a failure?"
 - If you have reached Turn 8 or higher and still haven't found the answer, DO NOT continue guessing. 
 - If you cannot find the output due to schema issues, missing data, or repeated SQL errors, STOP immediately.
 - In case of failure to find a value, report the following default error message in the relevant field: "ERROR: Analysis exceeded budget or data structure is incompatible."
+
+You MUST terminate if {current_turn} is larger than {turn_limit}.
 """
+
+    @staticmethod
+    def workspace_manifest_prompt(file_map: dict[str, str]) -> str:
+        """
+        Creates a strict mapping table to prevent the agent from using
+        original file names in SQL queries.
+        """
+        tab_rows = [
+            f"| `{k}` | **`{v}`** |"
+            for k, v in file_map.items()
+            if Path(v).name.startswith(DEFAULTS.tabular_prefix)
+        ]
+        ref_rows = [
+            f"| `{k}` | **`{v}`** |"
+            for k, v in file_map.items()
+            if Path(v).name.startswith(DEFAULTS.plaintext_prefix)
+        ]
+
+        return f"""
+### SQL DATA MANIFEST
+**PRIMARY DATA TABLES** (Query these to answer the main instruction):
+| Original File | SQL Path |
+| :--- | :--- |
+{"\n".join(tab_rows)}
+
+**REFERENCE TABLES** (Query these if you need to look up definitions or logic):
+| Original File | SQL Path |
+| :--- | :--- |
+{"\n".join(ref_rows)}
+""".strip()
 
     @classmethod
     def sytem_prompt(
@@ -127,13 +178,52 @@ Only use the tables available to you. Do NOT hallucinate table names.
 ### TOOL CALLS RESTRICTIONS
 - You are an assistant with access to tools. Call at most one tool per turn. If multiple steps are needed, call one, wait for results, then continue.
 - If after {turn_limit} turns you do not get a satisfactory answer, report the default error message: "ERROR: Analysis exceeded budget or data structure is incompatible."
+
+### PATH DE-CONFLICTION
+- The user instruction may contain local paths and/or plaintext files like: `/usr/foo/data.txt`.
+- YOU MUST IGNORE THESE. They are environment-specific and can cause SQL errors.
+- ALWAYS check the manifest first: e.g. if `data.txt` is listed under **PRIMARY DATA**, use the provided `.csv` path. 
+- ONLY USE the safe standardised paths provided in the **OPERATIONAL MANIFEST**.
+- If a file in the instruction is not in the manifest, report an error immediately.
+""".strip()
+
+    @staticmethod
+    def summarise_progress_prompt(
+        messages: list[BaseMessage], existing_summary: str
+    ) -> str:
+        return f"""
+### ROLE
+You are a Research Logger for a Data Explorer Agent. Your job is to update a running "Discovery Log" that tracks the technical progress of a data investigation.
+
+### CURRENT LOG
+{existing_summary if existing_summary else "No progress recorded yet."}
+
+### NEW ACTIVITY TO INCORPORATE
+{messages}
+
+### INSTRUCTIONS
+Update the Discovery Log by distilling the new activity into the following structure. Be concise but technically specific:
+
+1. **Schema Knowledge**: List confirmed table names, columns, and data types found via `DESCRIBE` or sampling.
+2. **Successful Queries**: Summarize what was learned from successful SQL executions (e.g., "Found that 'user_id' matches the 'id' column in file_B").
+3. **Failed Attempts**: Explicitly note SQL errors or queries that returned 0 rows. State *why* they failed if known (e.g., "Case-sensitivity issue with 'Country' column").
+4. **Current Status**: State exactly what part of the user's instruction remains unanswered.
+5. **Forbidden Actions**: Based on failures, list what the agent MUST NOT try again (e.g., "Do not attempt to query the .txt extension; DuckDB requires the .csv path").
+
+### CRITICAL RULES
+- Do NOT repeat the entire history; append or update facts.
+- Keep the summary focused on **data structure and content findings**.
+- If a specific file path was found to be empty or missing, highlight it prominently.
+- Format as a clean, bulleted technical brief.
 """.strip()
 
     @staticmethod
     def refuse_processing_prompt(request: DataExplorerRequest) -> str:
         # Extract details for the prompt context
-        file_paths = request.get("file_paths", [])
+        plaintext_files = request.get("plaintext_files", [])
+        tabular_files = request.get("tabular_files")
         instruction = request.get("instruction", "")
+        miex_file_paths = plaintext_files + tabular_files
 
         return f"""
 ### ROLE
@@ -141,14 +231,15 @@ You are the _massi_ Data Explorer Agent. You have been invoked, but the incoming
 
 ### DIAGNOSTICS
 The following request parameters were received:
-- **File Paths Provided**: {file_paths if file_paths else "NONE"}
+- **Plaintext File Paths Provided**: {plaintext_files if plaintext_files else "NONE"}
+- **Tabular File Paths Provided**: {tabular_files if tabular_files else "NONE"}
 - **Instruction Provided**: "{instruction if instruction else "EMPTY"}"
 
 ### REFUSAL PROTOCOL
 You must refuse to process this request. Your goal is to provide a structured refusal that identifies the missing requirements so the parent system or user can rectify the input.
 
 **Reason for Refusal:**
-{'- Missing file paths: No data source was provided for analysis.' if not file_paths else ''}
+{'- Missing file paths: No data source was provided for analysis.' if not miex_file_paths else ''}
 {'- Missing instruction: No analytical task was defined.' if not instruction else ''}
 
 ### OUTPUT REQUIREMENTS
@@ -191,6 +282,7 @@ The raw outcome of the data exploration process is:
    - **Cleaning**: Remove ALL markdown formatting (backticks, bolding, italics).
    - **Constraint**: If the result is a description rather than a single value, provide the most significant keyword or identifier from that description.
    - Set to `null` if no definitive value could be isolated.
+   - If the instruction provided a specific fallback (e.g., 'Use default value `X`), and the agent mentions it, use it.
 
 ### OUTPUT FORMAT
 Return ONLY a valid JSON object.
@@ -229,7 +321,10 @@ def query_dataset(sql_query: str):
 def check_for_usable_request(state: DataExplorerState) -> str:
     return (
         standardise_input_files.__name__
-        if (state["request"]["file_paths"] and state["request"]["instruction"])
+        if (
+            (state["request"]["plaintext_files"] or state["request"]["tabular_files"])
+            and state["request"]["instruction"]
+        )
         else refuse_processing.__name__
     )
 
@@ -246,37 +341,53 @@ def refuse_processing(
     return {"messages": [response], "exploration_result": response}
 
 
+# FIXME(effeciency): delegate this task upstream to avoid reruns on each gap derivation
 def standardise_input_files(state: DataExplorerState) -> DataExplorerState:
-    """
-    Creates a temporary directory for this specific run and standardizes files.
-    """
-    tmp_dir = tempfile.mkdtemp(prefix="massi_")
-    workspace = Path(tmp_dir)
-    file_map: dict[str, str] = {}
+    """Standardizes tabular data into a consistent format and chunks plaintext files into queryable CSVs."""
+    workspace = Path(tempfile.mkdtemp(prefix="massi_"))
+    tabular_files = state["request"].get("tabular_files", [])
 
-    for idx, path_str in enumerate(state["request"]["file_paths"]):
-        source = Path(path_str)
-
-        standard_name = (
-            source.name if source.suffix in [".csv"] else (source.name + ".csv")
+    # Standardise tabular files
+    tabular_file_map = {
+        Path(f).name: str(
+            (workspace / f"{DEFAULTS.tabular_prefix}_{i}_{Path(f).stem}.csv").absolute()
         )
-        target_name = f"data_{idx}_{standard_name}"
-        target_path = workspace / target_name
+        for i, f in enumerate(tabular_files)
+    }
+    tabular_source_target_pairs = zip(tabular_files, tabular_file_map.values())
+    for src, dst in tabular_source_target_pairs:
+        try:
+            pd.read_csv(src, sep=None, engine="python").to_csv(dst, index=False)
+        except Exception as e:
+            logger.error(f"Could not standardise tabular file `{src}` into `dst`: {e}")
 
-        if source.suffix.lower() in [".csv"]:
-            df = pd.read_csv(source)
-            df.to_csv(target_path, index=False)
-        elif source.suffix.lower() in [".txt"]:
+    # Standardise tabular files
+    plaintext_files = state["request"].get("plaintext_files", [])
+    plaintext_file_map = {
+        Path(f).name: str(
+            (
+                workspace / f"{DEFAULTS.plaintext_prefix}_{i}_{Path(f).stem}.csv"
+            ).absolute()
+        )
+        for i, f in enumerate(plaintext_files)
+    }
+    plaintext_source_target_pairs = zip(plaintext_files, plaintext_file_map.values())
+    for src, dst in plaintext_source_target_pairs:
+        txt = Path(src).read_text(encoding="utf-8")
+        chunks = [txt[i : i + 500] for i in range(0, len(txt), 500)]
+        try:
+            pd.DataFrame({"chunk_id": range(len(chunks)), "content": chunks}).to_csv(
+                dst, index=False
+            )
+        except Exception as e:
+            logger.error(
+                f"Could not standardise plaintext file `{src}` into `dst`: {e}"
+            )
 
-            text = source.read_text(encoding="utf-8")
-            chunks = [text[i : i + 500] for i in range(0, len(text), 500)]
-            pd.DataFrame(
-                {"content": chunks, "source": [source.name] * len(chunks)}
-            ).to_csv(target_path, index=False)
-
-        file_map[source.name] = str(target_path.absolute())
-
-    return {"workspace_path": str(workspace), "file_map": file_map}
+    return {
+        "workspace_path": str(workspace),
+        "file_map": {**tabular_file_map, **plaintext_file_map},
+    }
 
 
 def call_explorer_agent(
@@ -289,28 +400,46 @@ def call_explorer_agent(
     tools = [query_dataset]
     tool_using_agent = model.bind_tools(tools, parallel_tool_calls=False)
 
-    current_turn = len(
-        [m for m in state["messages"] if isinstance(m, HumanMessage)]
-    ) + (len(state["messages"]) // 2)
-    turn_limit = 5
-    workspace_manifest = "\n".join(
-        [
-            f"- {source}: Use path '{workspace_path}'"
-            for source, workspace_path in state["file_map"].items()
-        ]
-    )
-
+    workspace_manifest = PromptBuilder.workspace_manifest_prompt(state["file_map"])
+    current_turn = state.get("current_turn", 0)
+    turn_limit = props["turn_limit"]
     system_prompt = PromptBuilder.sytem_prompt(
         workspace_manifest, current_turn=current_turn, turn_limit=turn_limit
     )
     system_input = SystemMessage(content=system_prompt)
+    progress_summary = state.get("progress_summary", "")
     user_prompt = f"{PromptBuilder.recursion_limit_context_rule(current_turn=current_turn, turn_limit=turn_limit)}\n\n{state["request"]["instruction"]}"
     user_input = HumanMessage(content=user_prompt)
 
-    inputs = [system_input] + state["messages"] + [user_input]
+    inputs = (
+        [system_input]
+        + [SystemMessage(content=progress_summary)]
+        + state["messages"]
+        + [user_input]
+    )
     response = tool_using_agent.invoke(inputs)
 
-    return {"messages": [response]}
+    return {"messages": [response], "current_turn": current_turn + 1}
+
+
+def summarize_progress(
+    state: DataExplorerState, props: DataExplorerProps | None = None
+) -> DataExplorerState:
+    """
+    Summarises the progress of the exploration in a form of a structured work log.
+    Important: removes the message history up to the two last steps.
+    """
+    assert props
+    model = props["llm_client"]
+    assert model
+
+    summarise_prompt = PromptBuilder.summarise_progress_prompt(
+        state["messages"], state.get("progress_summary", "")
+    )
+    delete_messages = [RemoveMessage(id=m.id) for m in state["messages"][:-2]]
+    response = model.invoke(summarise_prompt)
+
+    return {"progress_summary": response.content, "messages": delete_messages}
 
 
 def cleanup(state: DataExplorerState):
@@ -341,6 +470,42 @@ def summarise_output_result(
     return {"final_output": response}
 
 
+# *__Conditional__*
+def check_turn_budget(state: DataExplorerState, props: DataExplorerProps) -> str:
+    """Decides if we allow the agent another turn or force a halt."""
+    current_turn = state.get("current_turn", 0)
+    turn_limit = props.get("turn_limit", 7)
+
+    if current_turn >= turn_limit:
+        return halt_on_exceeded_budget.__name__
+
+    return call_explorer_agent.__name__
+
+
+def halt_on_exceeded_budget(
+    state: DataExplorerState, props: DataExplorerProps | None = None
+) -> DataExplorerState:
+    """
+    Final node when budget is spent.
+    Combines the summary and the final tool result for the formatter.
+    """
+    assert props
+    summary = state.get("progress_summary", "No summary available.")
+    last_result = (
+        state["messages"][-1].content if state["messages"] else "No final query result."
+    )
+
+    halt_content = (
+        f"### HALTING CONDITION REACHED\n"
+        f"The agent has reached the maximum turn limit ({props['turn_limit']}).\n\n"
+        f"**Final Reached Result:**\n{last_result}\n\n"
+        f"**Exploration Summary:**\n{summary}\n\n"
+        f"**Final Status**: ERROR: Analysis exceeded budget or data structure is incompatible."
+    )
+
+    return {"exploration_result": SystemMessage(content=halt_content)}
+
+
 # Conditions
 # ----------
 
@@ -363,6 +528,8 @@ def create_explorer_subgraph(props: DataExplorerProps):
         (refuse_processing, {"props": props}),
         (standardise_input_files, {}),
         (call_explorer_agent, {"props": props}),
+        (summarize_progress, {"props": props}),
+        (halt_on_exceeded_budget, {"props": props}),
         (cleanup, {}),
         (get_final_exploration_result, {}),
         (summarise_output_result, {"props": props}),
@@ -387,7 +554,13 @@ def create_explorer_subgraph(props: DataExplorerProps):
         tool_or_cleanup,
         [TOOL_NODE, cleanup.__name__],
     )
-    builder.add_edge(TOOL_NODE, call_explorer_agent.__name__)
+    builder.add_edge(TOOL_NODE, summarize_progress.__name__)
+    builder.add_conditional_edges(
+        summarize_progress.__name__,
+        partial(check_turn_budget, props=props),
+        [call_explorer_agent.__name__, halt_on_exceeded_budget.__name__],
+    )
+    builder.add_edge(halt_on_exceeded_budget.__name__, cleanup.__name__)
     builder.add_edge(cleanup.__name__, get_final_exploration_result.__name__)
     builder.add_edge(
         get_final_exploration_result.__name__, summarise_output_result.__name__
@@ -402,15 +575,21 @@ def create_explorer_subgraph(props: DataExplorerProps):
 
 
 class DataExplorerAgent:
-    def __init__(self, model: BaseChatModel, recursion_limit: int = 25):
-        self._model = model
-        self._recursion_limit = recursion_limit
-        self.client = create_explorer_subgraph(
-            {"llm_client": self._model, "recursion_limit": recursion_limit}
-        )
+    def __init__(self, props: DataExplorerProps):
+        self._props = props
+        self.client = create_explorer_subgraph(self._props)
 
     def invoke(self, request: DataExplorerRequest) -> DataExplorerState:
-        return self.client.invoke(
-            {"request": request},
-            {"recursion_limit": self._recursion_limit},
-        )
+        try:
+            return self.client.invoke(
+                {"request": request},
+                {"recursion_limit": self._props.get("recursion_limit", 25)},
+            )
+        except Exception as e:
+            logger.error(e)
+            return {
+                "outcome": str(e),
+                "result_value": None,
+                "status": "rejected",
+                "success": False,
+            }

@@ -70,7 +70,7 @@ def safe_get_csv_details(csv: pl.Path) -> CSVDetails | None:
     try:
         return get_csv_details(csv)
     except Exception as e:
-        logger.warning(e)
+        logger.error(e)
         return None
 
 

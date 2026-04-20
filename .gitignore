@@ -4,6 +4,7 @@ _demo/dwc_data
 _demo/papers
 _evaluation/papers
 _evaluation/reports
+_evaluation/datasets
 _validation/data
 .tmp
 
