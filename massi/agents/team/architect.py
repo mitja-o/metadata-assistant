@@ -21,8 +21,6 @@ class ArchitectContextProps(TypedDict):
 
 
 class MetadataArchitect(ABC):
-    @abstractmethod
-    def get_context_prompt_block(self, context: ArchitectContextProps) -> str: ...
 
     @abstractmethod
     def get_system_prompt(self, context_block: str) -> str: ...
@@ -30,16 +28,8 @@ class MetadataArchitect(ABC):
     @abstractmethod
     def invoke(self, prompt: str) -> MetadataBlueprint: ...
 
-
-# Agent Instances
-# ---------------
-
-
-class DarwinCoreArchitect(MetadataArchitect):
-    def __init__(self, llm_client: BaseChatModel):
-        self._client = llm_client
-
     def get_context_prompt_block(self, context: ArchitectContextProps) -> str:
+        """A standard way to format the context block."""
         return f"""
 * **XSD Schema:**
 --- BEGIN: XSD Schema ---
@@ -58,6 +48,18 @@ class DarwinCoreArchitect(MetadataArchitect):
 {context["csv_overview"]}
 --- END: CSV Overview ---
 """.strip()
+
+
+# Agent Instances
+# ---------------
+
+# Darwin Core
+# :::::::::::
+
+
+class DarwinCoreArchitect(MetadataArchitect):
+    def __init__(self, llm_client: BaseChatModel):
+        self._client = llm_client
 
     def get_system_prompt(self, context_block: str) -> str:
         return f"""
@@ -125,6 +127,117 @@ Generate the XML following the `<archive>` structure. Where metadata is missing 
 """.strip()
 
     def invoke(self, prompt: str) -> MetadataBlueprint:
+        return self._client.with_structured_output(MetadataBlueprint).invoke(
+            [HumanMessage(content=prompt)]
+        )
+
+
+# Ecological Metadata Language
+# ::::::::::::::::::::::::::::
+
+
+class EMLArchitect(MetadataArchitect):
+    def __init__(self, llm_client: BaseChatModel):
+        self._client = llm_client
+
+    def get_system_prompt(self, context_block: str) -> str:
+        return f"""
+## **PROMPT FOR TEAM MEMBER AGENT: EML (Ecological Metadata Language) ARCHITECT**
+
+### **Role**
+
+You are a Senior Metadata Engineer specializing in EML 2.2.0. Your goal is to generate an `eml.xml` blueprint that captures the **high-level research context** and **methodological provenance** that sits outside the scope of Darwin Core (DwC) data mapping.
+
+### **Contextual Building Blocks**
+
+{context_block}
+
+### **Task: Research Context & Provenance Mapping**
+
+Focus on the following EML-specific modules which provide the essential "narrative" of the data:
+
+1.  **Methods Module:** Document sampling protocols, quality control, and step-by-step procedures.
+2.  **Project Module:** Map the institutional context, including funding, study area descriptions, and project personnel roles.
+3.  **Maintenance Module:** Describe the frequency of updates and the current status of the dataset.
+4.  **AdditionalMetadata Module:** Use this for custom extensions or information that doesn't fit standard schemas but is present in the context.
+
+**Modular Schema Integration Clause:**
+Search for specialized sub-packages (e.g., `eml-methods`, `eml-project`, `eml-access`). If the context hints at complex methodological details (e.g., sensor specs, lab protocols), generate a structured block with gaps even if the XSD provided is a high-level summary.
+
+### **Technical Logic & Mapping Rules**
+
+1. **Complementary Logic:** Do not spend effort on detailed column mapping (this is handled by the DwC Architect). Focus on the **Dataset-level** descriptive and administrative metadata.
+2. **Gap Syntax:** Use `{XMLBlueprintGapPattern.get_gap_pattern()}` for all placeholders.
+3. **Disambiguation:** Use **STRING** for prose, **DATE** for milestones, and **URI** for persistent identifiers.
+
+### **Expected Output Format (Research Context Focus)**
+
+```xml
+<?xml version="1.0" encoding="UTF-8"?>
+<eml:eml 
+    packageId="uuid-placeholder" 
+    system="knb" 
+    xmlns:eml="[https://eml.ecoinformatics.org/eml-2.2.0](https://eml.ecoinformatics.org/eml-2.2.0)"
+    xmlns:xsi="[http://www.w3.org/2001/XMLSchema-instance](http://www.w3.org/2001/XMLSchema-instance)">
+    
+  <dataset>
+    <title>{XMLBlueprintGapPattern.get_gap_pattern(gap_id="GAP_001", gap_type="STRING", gap_description="DATASET_TITLE")}</title>
+    
+    <creator>
+      <individualName>
+        <surName>{XMLBlueprintGapPattern.get_gap_pattern(gap_id="GAP_002", gap_type="STRING", gap_description="PI_SURNAME")}</surName>
+      </individualName>
+      <userId directory="[https://orcid.org](https://orcid.org)">{XMLBlueprintGapPattern.get_gap_pattern(gap_id="GAP_003", gap_type="URI", gap_description="ORCID")}</userId>
+    </creator>
+
+    <methods>
+      <methodStep>
+        <description>
+          <para>{XMLBlueprintGapPattern.get_gap_pattern(gap_id="GAP_004", gap_type="STRING", gap_description="SAMPLING_PROTOCOL_NARRATIVE")}</para>
+        </description>
+        <instrumentation>{XMLBlueprintGapPattern.get_gap_pattern(gap_id="GAP_005", gap_type="STRING", gap_description="SENSOR_OR_EQUIPMENT_SPECS")}</instrumentation>
+      </methodStep>
+      <qualityControl>
+        <description>
+          <para>{XMLBlueprintGapPattern.get_gap_pattern(gap_id="GAP_006", gap_type="STRING", gap_description="QA_QC_PROCEDURES")}</para>
+        </description>
+      </qualityControl>
+    </methods>
+
+    <project>
+      <title>{XMLBlueprintGapPattern.get_gap_pattern(gap_id="GAP_007", gap_type="STRING", gap_description="PARENT_PROJECT_TITLE")}</title>
+      <personnel>
+        <individualName><surName>...</surName></individualName>
+        <role>Principal Investigator</role>
+      </personnel>
+      <funding>
+        <para>{XMLBlueprintGapPattern.get_gap_pattern(gap_id="GAP_008", gap_type="STRING", gap_description="GRANT_AGENCY_AND_ID")}</para>
+      </funding>
+      <studyAreaDescription>
+        <descriptor name="habitat_type" citableClassificationSystem="false">
+          <descriptorValue>{XMLBlueprintGapPattern.get_gap_pattern(gap_id="GAP_009", gap_type="STRING", gap_description="HABITAT_CLASSIFICATION")}</descriptorValue>
+        </descriptor>
+      </studyAreaDescription>
+    </project>
+
+    <maintenance>
+      <description><para>Dataset status: {XMLBlueprintGapPattern.get_gap_pattern(gap_id="GAP_010", gap_type="STRING", gap_description="MAINTENANCE_STATUS")}</para></description>
+      <maintenanceUpdateFrequency>{XMLBlueprintGapPattern.get_gap_pattern(gap_id="GAP_011", gap_type="STRING", gap_description="UPDATE_FREQ")}</maintenanceUpdateFrequency>
+    </maintenance>
+
+    </dataset>
+
+  <additionalMetadata>
+    <metadata>
+      {XMLBlueprintGapPattern.get_gap_pattern(gap_id="GAP_012", gap_type="STRING", gap_description="CUSTOM_METADATA_EXTENSIONS")}
+    </metadata>
+  </additionalMetadata>
+</eml:eml>
+```
+""".strip()
+
+    def invoke(self, prompt: str) -> MetadataBlueprint:
+        # Utilizing structured output to ensure we get back our MetadataBlueprint TypedDict
         return self._client.with_structured_output(MetadataBlueprint).invoke(
             [HumanMessage(content=prompt)]
         )

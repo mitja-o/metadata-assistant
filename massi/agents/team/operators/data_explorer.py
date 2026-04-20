@@ -131,7 +131,7 @@ You MUST terminate if {current_turn} is larger than {turn_limit}.
         cls,
         workspace_manifest: str,
         db_dialect: str = "DuckDB",
-        db_top_k: int = 10000,
+        db_top_k: int = 300,
         current_turn: int = 0,
         turn_limit: int = 5,
     ) -> str:
@@ -153,7 +153,7 @@ Given an input question, create a syntactically correct {db_dialect} SQL query t
 - Never use PostgreSQL-specific functions that do not exist in {db_dialect}.
 - Use ONLY Data Query Language (DQL) statements like SELECT. 
 - Never modify stored data.
-- ALWAYS append `LIMIT {db_top_k}` to your queries unless you are aggregating data, to prevent pulling too many rows.
+- ALWAYS append `LIMIT {db_top_k}` to your queries unless you are aggregating data, to prevent pulling too many rows. If more rows are needed, perform subsequent pagination queries to iterative explore the content.
 
 Only use the tables available to you. Do NOT hallucinate table names.
 
