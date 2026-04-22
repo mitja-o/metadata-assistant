@@ -1,7 +1,6 @@
 import logging
 import operator
 from dataclasses import dataclass
-from enum import StrEnum
 from functools import partial
 from pathlib import Path
 from typing import Annotated, TypedDict
@@ -16,6 +15,7 @@ from massi.agents.team._dto import (
     DatasetFileCollection,
     FileOverview,
     GapTaskValidation,
+    MassiExecutionMode,
     MetadataBlueprint,
     MetadataGapDerivationPlan,
     MetadataGapTask,
@@ -54,14 +54,6 @@ class MassiRuntimeConfiguration(TypedDict):
 
 # Workflow state
 # --------------
-
-
-class MassiExecutionMode(StrEnum):
-    HUMAN_INQUIRY = "human"
-    """Focuses on human inquiry - interview the user about their dataset."""
-
-    DATA_INQUIRY = "data"
-    """Focuses on automated data exploration - derive metadata from the dataset autonomously."""
 
 
 # TODO(refactor): consider using LangGraph context for this or make immutable
@@ -121,7 +113,7 @@ class MassiWorkflow[T]:
 
 
 class Dependencies(TypedDict, total=False):
-    execution_mode: MassiExecutionMode = MassiExecutionMode.HUMAN_INQUIRY
+    execution_mode: MassiExecutionMode = "author-focus"
 
     architect_map: dict[SupportedMetadataGoals, MetadataArchitect] | None = None
     planner_map: dict[SupportedMetadataGoals, MetadataBlueprintPlanner] | None = None

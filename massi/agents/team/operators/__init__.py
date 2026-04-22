@@ -31,6 +31,9 @@ class GapDerivationOperator(ABC):
 # Agent Instances
 # ---------------
 
+# Data Operator
+# :::::::::::::
+
 
 class DataGapDervationOperator(GapDerivationOperator):
     def __init__(
@@ -67,3 +70,9 @@ class DataGapDervationOperator(GapDerivationOperator):
                 )
             )
         return {"result": {"content": result}, "task": task}
+
+
+# Author Operator
+# :::::::::::::
+
+# FIXME(implement): create the similar operator wrapper for `AuthorInterviewerAgent`

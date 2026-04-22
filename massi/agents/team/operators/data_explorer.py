@@ -3,11 +3,9 @@ import shutil
 import tempfile
 from functools import partial
 from pathlib import Path
-from typing import Literal, TypedDict
 
 import duckdb
 import pandas as pd
-from langchain.chat_models import BaseChatModel
 from langchain_core.messages import (
     BaseMessage,
     HumanMessage,
@@ -18,35 +16,26 @@ from langchain_core.tools import tool
 from langgraph.graph import END, START, MessagesState, StateGraph
 from langgraph.prebuilt import ToolNode
 
+from massi.agents.team.operators._interface import (
+    OperatorProps,
+    OperatorRequest,
+    OperatorResponse,
+)
+
 logger = logging.getLogger(__name__)
 
 
 # Interface
 # ---------
-class DataExplorerProps(TypedDict):
-    llm_client: BaseChatModel | None = None
-    recursion_limit: int = 15
-    turn_limit: int = 7
+
+type DataExplorerProps = OperatorProps
+type DataExplorerRequest = OperatorRequest
 
 
-class DataExplorerRequest(TypedDict):
-    plaintext_files: list[str]
-    """Path to all non-tabular source files"""
-    tabular_files: list[str]
-    """Path to all tabular source files"""
-    instruction: str
-    """The specific task from the parent graph"""
+class DataExplorerResponse(OperatorResponse):
+    """A local copy of the general operator response."""
 
-
-class DataExplorerResponse(TypedDict):
-    success: bool
-    status: Literal["rejected", "completed"]
-    outcome: str
-    result_value: str | None
-    """
-    The final value that should be entered in the upstream metadata record. 
-    None if the outcome is not successful.
-    """
+    ...
 
 
 # State
@@ -300,17 +289,31 @@ Return ONLY a valid JSON object.
 
 
 @tool
-def query_dataset(sql_query: str):
+def query_dataset(sql_query: str) -> str:
     """
     Executes a DuckDB SQL query.
-    You must use the absolute paths provided in your instructions for the FROM clause.
-    Example: SELECT * FROM '/tmp/massi_123/users.csv' LIMIT 5
+
+    Important:
+        You must use the absolute paths provided in your instructions for the FROM clause.
+        Example: SELECT * FROM '/tmp/massi_123/users.csv' LIMIT 5
+
+    Args:
+        sql_query (str): the query to be executed.
+
+    Returns:
+        str: result of the query execution:
+            - If success, the result of the query formatted as a markdown table.
+            - If errors occur, the error summary message.
     """
     try:
         result = duckdb.query(sql_query).to_df()
         return result.to_markdown()
     except Exception as e:
         return f"SQL Error: {str(e)}.\nEnsure you are using the full absolute paths provided."
+
+
+TOOL_NODE = "tools"
+"""A constant used to refer to the tool invocation node."""
 
 
 # Workflow Actions
@@ -422,6 +425,11 @@ def call_explorer_agent(
     return {"messages": [response], "current_turn": current_turn + 1}
 
 
+# *__Conditional__*
+def tool_or_cleanup(state: DataExplorerState) -> str:
+    return TOOL_NODE if state["messages"][-1].tool_calls else cleanup.__name__
+
+
 def summarize_progress(
     state: DataExplorerState, props: DataExplorerProps | None = None
 ) -> DataExplorerState:
@@ -440,34 +448,6 @@ def summarize_progress(
     response = model.invoke(summarise_prompt)
 
     return {"progress_summary": response.content, "messages": delete_messages}
-
-
-def cleanup(state: DataExplorerState):
-    """Removes temp files and prepares the final state."""
-    path = state.get("workspace_path")
-    if path and Path(path).exists():
-        shutil.rmtree(path)
-        logger.debug(f"massi cleanup: removed workspace: {path}")
-    return {"workspace_path": None}
-
-
-def get_final_exploration_result(state: DataExplorerState) -> DataExplorerState:
-    last_message = state["messages"][-1]
-    return {"exploration_result": last_message}
-
-
-def summarise_output_result(
-    state: DataExplorerState, props: DataExplorerProps | None = None
-) -> DataExplorerState:
-    assert props
-    model = props["llm_client"]
-    assert model
-    result = state["exploration_result"]
-    assessment_request = PromptBuilder.summarize_exploration_prompt(result)
-    response: DataExplorerResponse = model.with_structured_output(
-        DataExplorerResponse
-    ).invoke(assessment_request)
-    return {"final_output": response}
 
 
 # *__Conditional__*
@@ -503,17 +483,36 @@ def halt_on_exceeded_budget(
         f"**Final Status**: ERROR: Analysis exceeded budget or data structure is incompatible."
     )
 
-    return {"exploration_result": SystemMessage(content=halt_content)}
+    halt_message = SystemMessage(content=halt_content)
+    return {"messages": [halt_message]}
 
 
-# Conditions
-# ----------
+def get_final_exploration_result(state: DataExplorerState) -> DataExplorerState:
+    last_message = state["messages"][-1]
+    return {"exploration_result": last_message}
 
-TOOL_NODE = "tools"
+
+def cleanup(state: DataExplorerState):
+    """Removes temp files and prepares the final state."""
+    path = state.get("workspace_path")
+    if path and Path(path).exists():
+        shutil.rmtree(path)
+        logger.debug(f"massi cleanup: removed workspace: {path}")
+    return {"workspace_path": None}
 
 
-def tool_or_cleanup(state: DataExplorerState) -> str:
-    return TOOL_NODE if state["messages"][-1].tool_calls else cleanup.__name__
+def summarise_output_result(
+    state: DataExplorerState, props: DataExplorerProps | None = None
+) -> DataExplorerState:
+    assert props
+    model = props["llm_client"]
+    assert model
+    result = state["exploration_result"]
+    assessment_request = PromptBuilder.summarize_exploration_prompt(result)
+    response: DataExplorerResponse = model.with_structured_output(
+        DataExplorerResponse
+    ).invoke(assessment_request)
+    return {"final_output": response}
 
 
 # Graph Builder
@@ -580,16 +579,23 @@ class DataExplorerAgent:
         self.client = create_explorer_subgraph(self._props)
 
     def invoke(self, request: DataExplorerRequest) -> DataExplorerState:
+        runnable_config = {"recursion_limit": self._props.get("recursion_limit", 25)}
         try:
             return self.client.invoke(
                 {"request": request},
-                {"recursion_limit": self._props.get("recursion_limit", 25)},
+                runnable_config={
+                    "recursion_limit": self._props.get("recursion_limit", 25)
+                },
             )
         except Exception as e:
             logger.error(e)
             return {
-                "outcome": str(e),
-                "result_value": None,
-                "status": "rejected",
-                "success": False,
+                **self.client.get_state(runnable_config).values,
+                "request": request,
+                "final_output": {
+                    "outcome": str(e),
+                    "result_value": None,
+                    "status": "rejected",
+                    "success": False,
+                },
             }

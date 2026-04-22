@@ -51,6 +51,10 @@ class NaiveGapDerivationManager(GapDerivationManager):
         return derivation_request
 
 
+# Data-centric
+# ::::::::::::
+
+
 class DataGapDerivationManager(GapDerivationManager):
     def __init__(self, llm_client: BaseChatModel):
         self._client = llm_client
@@ -107,6 +111,80 @@ Based on the following context, write a clear, step-by-step instruction for a Da
         response = self._client.invoke(
             [
                 SystemMessage(content=manager_system_prompt),
+                HumanMessage(content=derivation_request),
+            ]
+        )
+        return response.content
+
+
+# Author-centric
+# ::::::::::::::
+
+
+class AuthorGapDerivationManager(GapDerivationManager):
+    def __init__(self, llm_client: BaseChatModel):
+        self._client = llm_client
+
+    def get_system_prompt(self) -> str:
+        return f"""
+### ROLE
+You are the _massi_ Interview Architect. Your job is to translate high-level metadata "Gaps" into precise, empathetic, and context-aware interview instructions for an Interviewer Agent.
+
+### CONTEXT ASSETS
+1. **Architect Prompt**: The high-level metadata goals (e.g., EML vs DwC).
+2. **XML Blueprint**: The target structure containing placeholders like {XMLBlueprintGapPattern.get_gap_pattern()}.
+3. **Gap Task**: The specific missing piece of information.
+
+### OBJECTIVE
+Generate an "Interview Instruction". This instruction must guide the Interviewer Agent to:
+- **Frame the Question**: How to ask the author for the missing data without using overly technical jargon.
+- **Provide Context**: Explain *why* this information is needed for the metadata record (e.g., "to ensure your funding is properly cited").
+- **Grounded References**: Mention specific files from the `gap_scope_files` to help the author identify the context (e.g., "In your file 'methods_v1.pdf', the sampling section is a bit brief...").
+- **Constraint Enforcement**: Remind the interviewer of the required format (e.g., "We need this as a valid ISO 8601 date").
+
+### INSTRUCTION GUIDELINES
+- Be conversational yet professional.
+- Focus on "Author-Centric" elicitation (e.g., "Ask the author to clarify the roles of the personnel listed in...").
+- Do not ask the agent to search data; ask it to conduct a dialogue.
+""".strip()
+
+    def get_instruction_prompt(
+        self, task: MetadataGapTask, architect_prompt: str, xml_blueprint: str
+    ) -> str:
+        # We leverage the fact that EML/DwC metadata often comes from the author's head
+        return f"""
+Based on the following context, formulate a strategic interview guide for the agent to use when speaking with the dataset author:
+
+### CURRENT GAP TO FILL
+- **Gap ID**: {task['gap_id']}
+- **Field Description**: {task['gap_description']}
+- **Required Format (Type)**: {task['gap_type']}
+- **Related Files for Reference**: {", ".join(task['gap_scope_files'])}
+- **Planner's Initial Request**: {task['gap_derivation_request']}
+
+### GLOBAL CONTEXT
+**Metadata Goal**:
+{architect_prompt}
+
+**Blueprint Fragment**:
+{xml_blueprint}
+
+### YOUR TASK
+Generate a prompt for the Interviewer Agent. The prompt should include:
+1. A suggested opening question for the author.
+2. A list of specific details or "probes" to ask if the first answer is too vague.
+3. Instructions on how to map the author's verbal answer back to the required {task['gap_type']} format.
+""".strip()
+
+    def invoke(self, derivation_request: str) -> str:
+        """
+        Synthesizes the metadata requirements into a dialogue strategy
+        for the Interviewer Operator.
+        """
+        system_prompt = self.get_system_prompt()
+        response = self._client.invoke(
+            [
+                SystemMessage(content=system_prompt),
                 HumanMessage(content=derivation_request),
             ]
         )

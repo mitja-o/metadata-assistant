@@ -117,15 +117,16 @@ def build_core_dependencies(
     operator_llm: BaseChatModel,
     manager_llm: BaseChatModel,
 ) -> Dependencies:
+    execution_mode: MassiExecutionMode = "data-focus"
     return dict(
-        execution_mode=MassiExecutionMode.DATA_INQUIRY,
+        execution_mode=execution_mode,
         architect_map={"darwin_core": DarwinCoreArchitect(architect_llm)},
         planner_map={"darwin_core": DarwinCorePlanner(planner_llm)},
         gap_derivation_manager_map={
-            MassiExecutionMode.DATA_INQUIRY: DataGapDerivationManager(manager_llm)
+            execution_mode: DataGapDerivationManager(manager_llm)
         },
         derivation_map={
-            MassiExecutionMode.DATA_INQUIRY: DataGapDervationOperator(
+            execution_mode: DataGapDervationOperator(
                 operator_llm,
                 recursion_limit=DEFAULTS.recursion_limit,
                 turn_limit=DEFAULTS.turn_limit,

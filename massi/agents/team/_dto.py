@@ -38,6 +38,7 @@ class MetadataLevel(IntEnum):
 
 
 type SupportedMetadataGoals = Literal["darwin_core", "eml"]
+type MassiExecutionMode = Literal["data-focus", "author-focus"]
 
 
 class MetadataGoal(TypedDict):
