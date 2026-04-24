@@ -16,7 +16,7 @@ from massi.agents.team.operators._interface import (
     OperatorRequest,
     OperatorResponse,
 )
-from massi.agents.team.operators.author_proxy import IOAuthorQueryClient
+from massi.agents.team.telecom.author_proxy import IOAuthorQueryClient
 
 logger = logging.getLogger(__name__)
 
