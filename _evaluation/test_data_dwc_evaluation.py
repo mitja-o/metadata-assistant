@@ -11,8 +11,7 @@ from lmnr import Laminar, observe
 import pandas as pd
 import pytest
 
-from massi.agents.interfaces import Config
-from massi.agents.massi import create_openai_llm
+from massi.agents.interfaces import Config, create_openai_llm
 from massi.agents.team._dto import MetadataGoal, MetadataLevel, MetadataScope
 from massi.agents.team.architect import DarwinCoreArchitect
 from massi.agents.team.managers import DataGapDerivationManager
@@ -215,7 +214,6 @@ def test_goal_dwc_mode_data_from_empty_metadata(
     input_state = {"settings": settings, "goals": dwc_metadata_goals}
 
     # --- Act ---
-    # FIXME: record failures too
     with timeit() as timer:
         try:
             outcome, success = (graph.invoke(input_state, thread_config), True)
@@ -232,7 +230,6 @@ def test_goal_dwc_mode_data_from_empty_metadata(
     logger.info(f"{outcome=}")
 
     # --- Assert ---
-    # FIXME(reporting): keep all message histories!!!
     target_report_exists = target_report_file.exists()
     pd.DataFrame.from_records(
         [

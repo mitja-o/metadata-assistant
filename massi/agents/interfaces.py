@@ -2,6 +2,11 @@ from abc import ABC, abstractmethod
 from dataclasses import dataclass
 
 from langchain_core.language_models import BaseChatModel
+from langchain_ollama import ChatOllama
+from langchain_openai import ChatOpenAI
+
+# Interface protocols
+# -------------------
 
 
 @dataclass
@@ -32,3 +37,21 @@ class Dependencies:
     llm_client: BaseChatModel | None = None
     prompt_client: PromptClient | None = None
     working_directory: str = "."
+
+
+# Chat Model Instances
+# --------------------
+
+
+def create_ollama_llm(config: Config) -> ChatOllama:
+    assert config.model_url, "Model URL needs to be specified for Ollama models"
+    return ChatOllama(
+        base_url=config.model_url,
+        model=config.model_name,
+        # format="json"  # forces structured JSON output
+    )
+
+
+def create_openai_llm(config: Config) -> ChatOpenAI:
+    assert config.api_key, "API key needs to be specified for OpenAI models"
+    return ChatOpenAI(model=config.model_name, api_key=config.api_key)

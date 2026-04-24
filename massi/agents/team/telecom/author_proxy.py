@@ -1,7 +1,7 @@
-from functools import partial
-from itertools import chain
 import logging
 from abc import ABC, abstractmethod
+from functools import partial
+from itertools import chain
 from pathlib import Path
 from typing import Self, TypedDict
 
@@ -11,14 +11,13 @@ from langchain.messages import HumanMessage, SystemMessage
 from langchain_community.document_loaders import PyPDFLoader
 from langchain_community.vectorstores import InMemoryVectorStore
 from langchain_core.documents import Document
+from langchain_core.vectorstores.base import VectorStoreRetriever
 from langchain_openai import OpenAIEmbeddings
 from langchain_text_splitters import RecursiveCharacterTextSplitter
-from langchain_core.vectorstores.base import VectorStoreRetriever
 from langgraph.graph import END, START, StateGraph
 from langgraph.graph.state import CompiledStateGraph
 
 from massi.agents.interfaces import Config
-
 
 logger = logging.getLogger(__name__)
 
