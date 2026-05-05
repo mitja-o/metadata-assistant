@@ -46,6 +46,8 @@ class AuthorReviewerState(MessagesState, total=False):
     """The request sent to the interviewer"""
     current_turn: int = 0
     """Current number of questions asked to the author."""
+    progress_summary: str
+    """Summary of the progress and actions take so far"""
     exploration_result: BaseMessage
     """The raw outcome (AI conclusion or error message) before formal formatting."""
     final_output: AuthorInterviewerResponse
@@ -81,6 +83,7 @@ Your current mission is defined by this instruction:
 - Rely solely on the dialogue; you cannot access external files.
 - Avoid generic pleasantries; remain professional, direct, and helpful.
 - Conclude the interview immediately once the specific gap described in the instruction is satisfied.
+- Conclude the interview immediately if the conversation log identifies that the author can not provide an answer (e.g. refuses to do so, or indicates that the information is not available).
 """.strip()
 
     @staticmethod
@@ -118,6 +121,27 @@ Update the summary. List:
 2. Questions still pending.
 3. User's tone or specific mentions of data unavailability.
 Keep it concise.
+""".strip()
+
+    @staticmethod
+    def generate_halting_explanation(
+        turn_limit: int, original_instruction: str, progress_summary: str
+    ) -> str:
+        return f"""
+INTERVIEW HALTED: Maximum turn limit ({turn_limit}) reached.
+Reason: The metadata for the original instruction could not be finalized within the given turn limit.
+
+### Original Instruction
+---
+{original_instruction}
+---
+
+### Current Interview Progress
+---
+{progress_summary}
+---
+
+Please identify if it is possible to provide a final answer to the instruction from the given progress summary.
 """.strip()
 
     @staticmethod
@@ -276,10 +300,8 @@ def check_turn_budget(
 def halt_on_exceeded_budget(
     state: AuthorReviewerState, props: AuthorInterviewerProps | None = None
 ) -> AuthorReviewerState:
-    # Resolved FIXME: Elaborate halting message
-    halt_content = (
-        f"INTERVIEW HALTED: Maximum turn limit ({props['turn_limit']}) reached. "
-        f"The metadata for '{state['request']['instruction']}' could not be finalized."
+    halt_content = AuthorPromptBuilder.generate_halting_explanation(
+        props["turn_limit"], state["request"]["instruction"], state["progress_summary"]
     )
     halt_msg = SystemMessage(content=halt_content)
     return {"messages": [halt_msg], "exploration_result": halt_msg}
@@ -356,6 +378,10 @@ def create_interviewer_subgraph(props: AuthorInterviewerProps):
     builder.add_edge(summarise_output_result.__name__, END)
 
     return builder.compile()
+
+
+# Agent Client Interface
+# ----------------------
 
 
 class AuthorInterviewerAgent:
