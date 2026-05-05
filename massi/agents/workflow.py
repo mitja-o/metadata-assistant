@@ -26,7 +26,8 @@ from massi.agents.team._dto import (
     VerifiedMetadataGapTask,
 )
 from massi.agents.team.architect import ArchitectContextProps, MetadataArchitect
-from massi.agents.team.managers import GapDerivationManager
+from massi.agents.team.instructors import GapDerivationInstructor
+from massi.agents.team.masker import MetadataMasker
 from massi.agents.team.operators import GapDerivationOperator
 from massi.agents.team.planner import MetadataBlueprintPlanner
 from massi.agents.tools import (
@@ -115,10 +116,11 @@ class MassiWorkflow[T]:
 class Dependencies(TypedDict, total=False):
     execution_mode: MassiExecutionMode = "author-focus"
 
+    metadata_masking_map: dict[SupportedMetadataGoals, MetadataMasker] | None = None
     architect_map: dict[SupportedMetadataGoals, MetadataArchitect] | None = None
     planner_map: dict[SupportedMetadataGoals, MetadataBlueprintPlanner] | None = None
-    gap_derivation_manager_map: (
-        dict[MassiExecutionMode, GapDerivationManager] | None
+    gap_derivation_instructor_map: (
+        dict[MassiExecutionMode, GapDerivationInstructor] | None
     ) = None
     derivation_map: dict[MassiExecutionMode, GapDerivationOperator] | None = None
 
@@ -197,6 +199,13 @@ def patch_metadata(
 
 # Workflow nodes
 # --------------
+# TODO(adjustment): to conditionally skip the architect without much effort
+#   1. Make a branching strategy
+#   2. If the input state contains ground-truth metadata
+#   3. Then mask the metadata according to a defined strategy (alg)
+#   4.      and use the masked metadata as a blueprint with GAPs
+#   5. Otherwise run the architect (llm) as usual
+#   6. Pass the blueprint to the Planner as usual
 
 
 def _refine_initalisation(state: MassiCoreState) -> MassiCoreState:
@@ -266,7 +275,28 @@ def terminate(state: MassiCoreState) -> MassiCoreState:
 
 
 # -- Subgraph
-def start_metadata_derivation(
+
+
+def _is_ground_truth_metadata_given(state: MassiGoalResolutionState) -> bool:
+    # FIXME(implement): check if a ground truth metadata is given
+    #   | T -> mask the metadata into a blueprint
+    #   | F -> call the architect
+    ...
+
+
+def mask_ground_truth_metadata(
+    state: MassiGoalResolutionState, dependencies: Dependencies | None = None
+) -> MassiGoalResolutionState:
+    # FIXME(implement): mask the metadata by a registered strategy
+    assert dependencies
+    assert dependencies["metadata_masking_map"]
+    goal_key = state["goal"]["metadata_goal_key"]
+    masker = dependencies["metadata_masking_map"].get(goal_key)
+    assert masker
+    ...
+
+
+def prepare_metadata_blueprint_architect(
     state: MassiGoalResolutionState, dependencies: Dependencies | None = None
 ) -> MassiGoalResolutionState:
     assert dependencies
@@ -310,7 +340,7 @@ def start_metadata_derivation(
     }
 
 
-def build_blueprint_xml(
+def invoke_metadata_blueprint_architect(
     state: MassiGoalResolutionState, dependencies: Dependencies | None = None
 ) -> MassiGoalResolutionState:
     assert dependencies
@@ -391,22 +421,22 @@ def prepare_derivation_instruction(
     state: MassiGoalResolutionState, dependencies: Dependencies | None = None
 ) -> MassiGoalResolutionState:
     assert dependencies
-    assert dependencies["gap_derivation_manager_map"]
+    assert dependencies["gap_derivation_instructor_map"]
     execution_mode = dependencies["execution_mode"]
-    manager = dependencies["gap_derivation_manager_map"].get(execution_mode)
-    assert manager
+    instructor = dependencies["gap_derivation_instructor_map"].get(execution_mode)
+    assert instructor
 
     valid_gap_tasks: VerifiedMetadataGapDerivationPlan = take_valid_plan_tasks(state)
     current_gap_task_pointer = state["current_gap_task_pointer"]
     current_gap_task = valid_gap_tasks["gaps"][current_gap_task_pointer]
     logger.debug(current_gap_task)
 
-    instruction_prompt = manager.get_instruction_prompt(
+    instruction_prompt = instructor.get_instruction_prompt(
         current_gap_task,
         state["architect_prompt"],
         state["working_copy_xml_blueprint"]["content"],
     )
-    rich_instruction: str = manager.invoke(instruction_prompt)
+    rich_instruction: str = instructor.invoke(instruction_prompt)
     logger.debug(rich_instruction)
 
     return {"current_gap_instruction_prompt": rich_instruction}
@@ -467,8 +497,8 @@ def _build_goal_resolution_graph(
     builder = StateGraph(MassiGoalResolutionState)
 
     nodes = [
-        (start_metadata_derivation, {"dependencies": dependencies}),
-        (build_blueprint_xml, {"dependencies": dependencies}),
+        (prepare_metadata_blueprint_architect, {"dependencies": dependencies}),
+        (invoke_metadata_blueprint_architect, {"dependencies": dependencies}),
         (make_gap_derivation_plan, {"dependencies": dependencies}),
         (verify_gap_derivation_plan, {}),
         (prepare_derivation_instruction, {"dependencies": dependencies}),
@@ -481,9 +511,14 @@ def _build_goal_resolution_graph(
         node_func = partial(fn, **kwargs) if kwargs else fn
         builder.add_node(node_name, node_func)
 
-    builder.add_edge(START, start_metadata_derivation.__name__)
-    builder.add_edge(start_metadata_derivation.__name__, build_blueprint_xml.__name__)
-    builder.add_edge(build_blueprint_xml.__name__, make_gap_derivation_plan.__name__)
+    builder.add_edge(START, prepare_metadata_blueprint_architect.__name__)
+    builder.add_edge(
+        prepare_metadata_blueprint_architect.__name__,
+        invoke_metadata_blueprint_architect.__name__,
+    )
+    builder.add_edge(
+        invoke_metadata_blueprint_architect.__name__, make_gap_derivation_plan.__name__
+    )
     builder.add_edge(
         make_gap_derivation_plan.__name__, verify_gap_derivation_plan.__name__
     )

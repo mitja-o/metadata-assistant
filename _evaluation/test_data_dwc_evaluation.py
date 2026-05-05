@@ -14,7 +14,7 @@ import pytest
 from massi.agents.interfaces import Config, create_openai_llm
 from massi.agents.team._dto import MetadataGoal, MetadataLevel, MetadataScope
 from massi.agents.team.architect import DarwinCoreArchitect
-from massi.agents.team.managers import DataGapDerivationManager
+from massi.agents.team.instructors import DataGapDerivationInstructor
 from massi.agents.team.operators import DataGapDervationOperator
 from massi.agents.team.planner import DarwinCorePlanner
 from massi.agents.workflow import (
@@ -114,15 +114,15 @@ def build_core_dependencies(
     architect_llm: BaseChatModel,
     planner_llm: BaseChatModel,
     operator_llm: BaseChatModel,
-    manager_llm: BaseChatModel,
+    instructor_llm: BaseChatModel,
 ) -> Dependencies:
     execution_mode: MassiExecutionMode = "data-focus"
     return dict(
         execution_mode=execution_mode,
         architect_map={"darwin_core": DarwinCoreArchitect(architect_llm)},
         planner_map={"darwin_core": DarwinCorePlanner(planner_llm)},
-        gap_derivation_manager_map={
-            execution_mode: DataGapDerivationManager(manager_llm)
+        gap_derivation_instructor_map={
+            execution_mode: DataGapDerivationInstructor(instructor_llm)
         },
         derivation_map={
             execution_mode: DataGapDervationOperator(

@@ -8,6 +8,7 @@ format: pyproject.toml
 .PHONY: clean-build-artifacts
 clean-build-artifacts clean-build: pyproject.toml
 	rm -rf build
+	rm -rf massi.egg-info
 	rm -rf dist
 
 .PHONY: clean-cache

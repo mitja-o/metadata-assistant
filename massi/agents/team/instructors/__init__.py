@@ -9,7 +9,7 @@ from massi.agents.team._dto import MetadataGapTask, XMLBlueprintGapPattern
 # --------------
 
 
-class GapDerivationManager(ABC):
+class GapDerivationInstructor(ABC):
     @abstractmethod
     def get_system_prompt(self) -> str: ...
 
@@ -23,7 +23,7 @@ class GapDerivationManager(ABC):
 
     @abstractmethod
     def invoke(self, derivation_request: str) -> str:
-        """A manager's task is to describe the derivation instruction to the derivation operator.
+        """An instructor's task is to describe the derivation instruction to the derivation operator.
         It generates a structured prompt in order to guide the operators' derivation process.
         It uses the context provided to formulate the request most clearly.
 
@@ -40,7 +40,7 @@ class GapDerivationManager(ABC):
 # ---------------
 
 
-class NaiveGapDerivationManager(GapDerivationManager):
+class NaiveGapDerivationInstructor(GapDerivationInstructor):
     def get_system_prompt(self):
         return "n/a"
 
@@ -55,14 +55,14 @@ class NaiveGapDerivationManager(GapDerivationManager):
 # ::::::::::::
 
 
-class DataGapDerivationManager(GapDerivationManager):
+class DataGapDerivationInstructor(GapDerivationInstructor):
     def __init__(self, llm_client: BaseChatModel):
         self._client = llm_client
 
     def get_system_prompt(self) -> str:
         return f"""
 ### ROLE
-You are the _massi_ Derivation Manager. Your job is to translate high-level metadata "Gaps" into precise technical instructions for a Data Explorer Agent.
+You are the _massi_ Derivation Instructor. Your job is to translate high-level metadata "Gaps" into precise technical instructions for a Data Explorer Agent.
 
 ### CONTEXT ASSETS
 1. **Architect Prompt**: The original user intent/requirement.
@@ -107,10 +107,10 @@ Based on the following context, write a clear, step-by-step instruction for a Da
         Uses an LLM to synthesize the high-level task and technical blueprints
         into a concrete instruction for the Data Explorer operator.
         """
-        manager_system_prompt = self.get_system_prompt()
+        instructor_system_prompt = self.get_system_prompt()
         response = self._client.invoke(
             [
-                SystemMessage(content=manager_system_prompt),
+                SystemMessage(content=instructor_system_prompt),
                 HumanMessage(content=derivation_request),
             ]
         )
@@ -121,7 +121,7 @@ Based on the following context, write a clear, step-by-step instruction for a Da
 # ::::::::::::::
 
 
-class AuthorGapDerivationManager(GapDerivationManager):
+class AuthorGapDerivationInstructor(GapDerivationInstructor):
     def __init__(self, llm_client: BaseChatModel):
         self._client = llm_client
 
