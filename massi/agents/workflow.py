@@ -116,7 +116,7 @@ class MassiWorkflow[T]:
 class Dependencies(TypedDict, total=False):
     execution_mode: MassiExecutionMode = "author-focus"
 
-    metadata_masking_map: dict[SupportedMetadataGoals, MetadataMasker] | None = None
+    metadata_masker: MetadataMasker | None = None
     architect_map: dict[SupportedMetadataGoals, MetadataArchitect] | None = None
     planner_map: dict[SupportedMetadataGoals, MetadataBlueprintPlanner] | None = None
     gap_derivation_instructor_map: (
@@ -224,11 +224,10 @@ def inventorize_dataset(state: MassiCoreState) -> MassiCoreState:
     file_overviews: list[FileOverview] = [
         {"location": p, "stats": str(s)} for (p, s) in paths
     ]
-    # FIXME(formats): Darwin Core also often uses `.txt` (TSV) files. I need to account for that too.
     tabular_file_overviews: list[CSVOverview] = [
         {**f, "details": details}
         for f in file_overviews
-        if f["location"].suffix.lower() in (".csv", ".txt")
+        if f["location"].suffix.lower() in (".csv", ".txt", ".tsv")
         and (details := safe_get_csv_details(f["location"]))
         and bool(details)
     ]
@@ -252,7 +251,7 @@ def map_goals(state: MassiCoreState) -> MassiCoreState:
         return [Send(terminate.__name__, {**state})]
 
 
-# -- Subgraph invokation
+# -- Subgraph invocation
 def run_metadata_derivation_goal(
     state: MassiGoalResolutionState, dependencies: Dependencies
 ) -> MassiCoreState:
@@ -281,19 +280,33 @@ def _is_ground_truth_metadata_given(state: MassiGoalResolutionState) -> bool:
     # FIXME(implement): check if a ground truth metadata is given
     #   | T -> mask the metadata into a blueprint
     #   | F -> call the architect
-    ...
+    goal = state["goal"]
+    ground_truth_metadata = goal.get("ground_truth_metadata_file", None)
+    logger.info(f"Received: {ground_truth_metadata=}")
+    return (
+        mask_ground_truth_metadata.__name__
+        if ground_truth_metadata
+        else prepare_metadata_blueprint_architect.__name__
+    )
 
 
 def mask_ground_truth_metadata(
     state: MassiGoalResolutionState, dependencies: Dependencies | None = None
 ) -> MassiGoalResolutionState:
-    # FIXME(implement): mask the metadata by a registered strategy
     assert dependencies
-    assert dependencies["metadata_masking_map"]
-    goal_key = state["goal"]["metadata_goal_key"]
-    masker = dependencies["metadata_masking_map"].get(goal_key)
+    assert dependencies["metadata_masker"]
+    goal_ground_truth_metadata_file = state["goal"]["ground_truth_metadata_file"]
+    masker = dependencies["metadata_masker"]
     assert masker
-    ...
+    assert goal_ground_truth_metadata_file
+    ground_truth_metadata_path = Path(goal_ground_truth_metadata_file)
+    ground_truth_metadata = ground_truth_metadata_path.read_text()
+    logger.debug(f"{ground_truth_metadata=}")
+
+    blueprint = masker.invoke(ground_truth_metadata)
+    logger.debug(f"{blueprint["content"]=}")
+
+    return {"architect_xml_blueprint": blueprint}
 
 
 def prepare_metadata_blueprint_architect(
@@ -497,6 +510,7 @@ def _build_goal_resolution_graph(
     builder = StateGraph(MassiGoalResolutionState)
 
     nodes = [
+        (mask_ground_truth_metadata, {"dependencies": dependencies}),
         (prepare_metadata_blueprint_architect, {"dependencies": dependencies}),
         (invoke_metadata_blueprint_architect, {"dependencies": dependencies}),
         (make_gap_derivation_plan, {"dependencies": dependencies}),
@@ -511,7 +525,21 @@ def _build_goal_resolution_graph(
         node_func = partial(fn, **kwargs) if kwargs else fn
         builder.add_node(node_name, node_func)
 
-    builder.add_edge(START, prepare_metadata_blueprint_architect.__name__)
+    # -- allows to bypass the architect for ablation studies
+    builder.add_conditional_edges(
+        START,
+        _is_ground_truth_metadata_given,
+        [
+            mask_ground_truth_metadata.__name__,
+            prepare_metadata_blueprint_architect.__name__,
+        ],
+    )
+    # -- go directly from the masking to planning
+    builder.add_edge(
+        mask_ground_truth_metadata.__name__, make_gap_derivation_plan.__name__
+    )
+
+    # -- regular 'full' flow with arhchitect
     builder.add_edge(
         prepare_metadata_blueprint_architect.__name__,
         invoke_metadata_blueprint_architect.__name__,
@@ -522,7 +550,7 @@ def _build_goal_resolution_graph(
     builder.add_edge(
         make_gap_derivation_plan.__name__, verify_gap_derivation_plan.__name__
     )
-    # * export if completed, otherwise process
+    # -- export if completed, otherwise process
     builder.add_conditional_edges(
         verify_gap_derivation_plan.__name__,
         check_is_plan_usable,
@@ -532,7 +560,7 @@ def _build_goal_resolution_graph(
         prepare_derivation_instruction.__name__, execute_gap_derivation.__name__
     )
     builder.add_edge(execute_gap_derivation.__name__, synthesize_metadata.__name__)
-    # * loop back to verification
+    # -- loop back to verification
     builder.add_edge(synthesize_metadata.__name__, verify_gap_derivation_plan.__name__)
     builder.add_edge(export_metadata.__name__, END)
 

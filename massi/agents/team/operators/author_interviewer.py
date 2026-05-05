@@ -82,6 +82,7 @@ Your current mission is defined by this instruction:
 ### CONSTRAINTS
 - Rely solely on the dialogue; you cannot access external files.
 - Avoid generic pleasantries; remain professional, direct, and helpful.
+- If the discussion is in progress, rely on the previous findings when formulating the questions.
 - Conclude the interview immediately once the specific gap described in the instruction is satisfied.
 - Conclude the interview immediately if the conversation log identifies that the author can not provide an answer (e.g. refuses to do so, or indicates that the information is not available).
 """.strip()
@@ -145,7 +146,7 @@ Please identify if it is possible to provide a final answer to the instruction f
 """.strip()
 
     @staticmethod
-    def format_output_prompt(last_message: str) -> str:
+    def format_output_prompt(last_message: str, progress_summary: str) -> str:
         return f"""
 ### ROLE
 You are a Senior Metadata Synthesizer. Your goal is to transform a dialogue-based interview into a high-integrity, structured metadata record.
@@ -155,6 +156,12 @@ The following is the conclusion of a technical interview with a data author:
 ---
 {last_message}
 ---
+
+### INTERVIEW PROGRESS HISTORY
+---
+{progress_summary}
+---
+
 
 ### EXTRACTION PROTOCOL
 1. **Validation**: Assess if the author provided a definitive value. 
@@ -319,7 +326,8 @@ def summarise_output_result(
     model = props["llm_client"]
     assert model
     raw_result = state["exploration_result"].content
-    prompt = AuthorPromptBuilder.format_output_prompt(raw_result)
+    progress_summary = state.get("progress_summary", "No progress summary available.")
+    prompt = AuthorPromptBuilder.format_output_prompt(raw_result, progress_summary)
     response = model.with_structured_output(AuthorInterviewerResponse).invoke(prompt)
     return {"final_output": response}
 

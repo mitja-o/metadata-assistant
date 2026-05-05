@@ -88,10 +88,13 @@ class MetadataGoal(TypedDict):
     scopes: list[MetadataScope]
     level: MetadataLevel
     target_filename: str
-    # schema: AbstractXMLSchema
     schema_source: str
     description: str | None
     metadata_goal_key: SupportedMetadataGoals
+    ground_truth_metadata_file: str | None
+    """An optional ground truth metadata instance.  
+    IMPORTANT: If provided, it should be used as a basis for the metadata template.
+    """
 
 
 class MetadataBlueprint(TypedDict):

@@ -9,7 +9,7 @@ from massi.agents.team._dto import MetadataBlueprint, XMLBlueprintGapPattern
 
 class MetadataMasker(ABC):
     @abstractmethod
-    def invoke(self, xml: str) -> MetadataBlueprint: ...
+    def invoke(self, metadata: str) -> MetadataBlueprint: ...
 
 
 # Agent instances
@@ -66,8 +66,8 @@ __EXAMPLE_XML__ = dict(
 )
 
 
-class EMLMasker(MetadataMasker):
-    def invoke(self, xml_string):
+class XMLMasker(MetadataMasker):
+    def invoke(self, metadata: str) -> MetadataBlueprint:
         """Mask all attributes and values of the XML.
 
         Args:
@@ -116,12 +116,9 @@ class EMLMasker(MetadataMasker):
                 </dataset>
             </eml:eml>
         """
-        # Parse the XML string into an lxml element tree
-        # lxml.etree handles encoding declarations in the string more robustly
         parser = etree.XMLParser(remove_blank_text=False)
-        root = etree.fromstring(xml_string.encode("utf-8"), parser=parser)
+        root = etree.fromstring(metadata.encode("utf-8"), parser=parser)
 
-        # lxml's iter() includes the root and all descendants
         running_idx = 1
         for _, elem in enumerate(root.iter()):
             tag = str(elem.tag.__name__) if callable(elem.tag) else str(elem.tag)
@@ -141,7 +138,6 @@ class EMLMasker(MetadataMasker):
                 running_idx += 1
 
             # Mask Attributes
-            # lxml allows direct modification of the .attrib dictionary
             if elem.attrib:
                 for attr in elem.attrib:
                     elem.attrib[attr] = XMLBlueprintGapPattern.get_gap_pattern(
@@ -151,11 +147,8 @@ class EMLMasker(MetadataMasker):
                     )
                     running_idx += 1
 
-        # Serialize back to string
-        # 'encoding="unicode"' returns a Python str; 'pretty_print' is optional
         return etree.tostring(
             root,
             encoding="unicode",
             method="xml",
-            # xml_declaration=True if xml_string.startswith("<?xml") else False
         )
