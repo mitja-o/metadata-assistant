@@ -1,6 +1,0 @@
-case_id,transform,source_data,expected_result,success,cause,error,timestamp
-c1,up,foo,FOO,False,error,"assert 'FOO' == 'FAIL'
-  
-  - FAIL
-  + FOO",1778060465.554039
-c2,up,bar,BAR,True,,,1778060478.285418

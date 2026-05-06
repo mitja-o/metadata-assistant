@@ -144,12 +144,8 @@ class MetadataGapTaskOutcome(TypedDict):
     result: MetadataGapDerivationResult
 
 
-class MetadataExport(TypedDict):
-    destination_file: Path
-
-
 class FileOverview(TypedDict):
-    location: Path
+    location: str
     stats: str
 
 

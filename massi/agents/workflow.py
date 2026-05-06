@@ -137,7 +137,7 @@ def normalize_gap_file_paths(
     gap_task: MetadataGapTask, state: MassiGoalResolutionState | None = None
 ) -> MetadataGapTask:
     state_file_path_maps = {
-        p["location"].name: str(p["location"]) for p in state["dataset"]["files"]
+        Path(p["location"]).name: str(p["location"]) for p in state["dataset"]["files"]
     }
     normalised_files = [
         state_file_path_maps.get(Path(f).name, f) for f in gap_task["gap_scope_files"]
@@ -222,12 +222,12 @@ def inventorize_dataset(state: MassiCoreState) -> MassiCoreState:
     work_dir = state["settings"]["runtime_config"]["working_directory"]
     paths = map(get_file_stats, walk_working_dir_for_files(seed_path=work_dir))
     file_overviews: list[FileOverview] = [
-        {"location": p, "stats": str(s)} for (p, s) in paths
+        {"location": str(p), "stats": str(s)} for (p, s) in paths
     ]
     tabular_file_overviews: list[CSVOverview] = [
         {**f, "details": details}
         for f in file_overviews
-        if f["location"].suffix.lower() in (".csv", ".txt", ".tsv")
+        if Path(f["location"]).suffix.lower() in (".csv", ".txt", ".tsv")
         and (details := safe_get_csv_details(f["location"]))
         and bool(details)
     ]

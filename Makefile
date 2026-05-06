@@ -41,12 +41,12 @@ ${GBIF_DATA_DIR}/.key: _downloads/gbif_data_archive.zip
 # prepare the working data
 ${GBIF_DATA_DIR}/working_copy/.key: ${GBIF_DATA_DIR}/.key
 	@echo "🚚 Preparing the working data"
-	mkdir -p _data/working_copy/data
-	cp -r _data/gbif_data_archive/data _data/working_copy/data
+	mkdir -p ${GBIF_DATA_DIR}/working_copy
+	cp -r ${GBIF_DATA_DIR}/data ${GBIF_DATA_DIR}/working_copy
 	@echo "🗃️ Unpacking the working data"
-	for z in  _data/working_copy/data/**/*.zip; do \
-		echo "$$z" ; \
-		unzip "$$z" -x ".*" -x "__*" -x "*.xml" ; \
+	for z in  ${GBIF_DATA_DIR}/working_copy/data/*.zip; do \
+		echo "~~ placing: $$z --> $${z%.*} ..." ; \
+		unzip "$$z" -x ".*" -x "__*" -x "*.xml" -d $${z%.*} ; \
 	done
 	@echo "🗝️ Making a target key"
 	touch ${GBIF_DATA_DIR}/working_copy/.key
@@ -54,17 +54,22 @@ ${GBIF_DATA_DIR}/working_copy/.key: ${GBIF_DATA_DIR}/.key
 # prepare the ground truth
 ${GBIF_DATA_DIR}/ground_truth/.key: ${GBIF_DATA_DIR}/working_copy/.key
 	@echo "🚚 Preparing the ground truth data"
-	mkdir -p _data/ground_truth/data
-	mkdir -p _data/ground_truth/papers
-	mv _data/data _data/ground_truth/data
-	mv _data/papers _data/ground_truth/papers
+	mkdir -p ${GBIF_DATA_DIR}/ground_truth/data
+	mkdir -p ${GBIF_DATA_DIR}/ground_truth/papers
+	mv ${GBIF_DATA_DIR}/data ${GBIF_DATA_DIR}/ground_truth
+	mv ${GBIF_DATA_DIR}/papers ${GBIF_DATA_DIR}/ground_truth
+	@echo "🗃️ Unpacking the ground truth metadata"
+	for z in  ${GBIF_DATA_DIR}/ground_truth/data/*.zip; do \
+		echo "~~ placing: $$z --> $${z%.*} ..." ; \
+		unzip "$$z" eml.xml meta.xml -d $${z%.*} ; \
+	done
 	@echo "🗝️ Making a target key"
 	touch ${GBIF_DATA_DIR}/ground_truth/.key
 
 # prepare the case inputs
 _evaluation/runtime/gbif_cases.csv: ${GBIF_DATA_DIR}/ground_truth/.key
 	mkdir -p _evaluation/runtime/
-	cp _data/downloaded_gbif_cases.csv _evaluation/runtime/gbif_cases.csv
+	cp ${GBIF_DATA_DIR}/downloaded_gbif_cases.csv _evaluation/runtime/gbif_cases.csv
 
 # run the experiments
 .PHONY: evaluate

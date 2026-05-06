@@ -1,7 +1,6 @@
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
 
-from langchain_core.language_models import BaseChatModel
 from langchain_ollama import ChatOllama
 from langchain_openai import ChatOpenAI
 
@@ -30,13 +29,6 @@ class PromptClient(ABC):
     def prompt_user(
         self, queries: list[str] = [], prelude: list[str] = []
     ) -> list[str]: ...
-
-
-@dataclass
-class Dependencies:
-    llm_client: BaseChatModel | None = None
-    prompt_client: PromptClient | None = None
-    working_directory: str = "."
 
 
 # Chat Model Instances
