@@ -6,6 +6,8 @@ _evaluation/papers
 _evaluation/reports
 _evaluation/datasets
 _validation/data
+_data
+_downloads
 .tmp
 
 # Langgraph runtime files

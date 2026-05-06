@@ -1681,9 +1681,6 @@ dev = [
     { name = "mypy" },
     { name = "pytest" },
 ]
-experiments = [
-    { name = "pypdf" },
-]
 observability = [
     { name = "lmnr", extra = ["all"] },
 ]
@@ -1719,7 +1716,6 @@ dev = [
     { name = "mypy", specifier = ">=1.19.1" },
     { name = "pytest", specifier = ">=9.0.2" },
 ]
-experiments = [{ name = "pypdf", specifier = ">=6.8.0" }]
 observability = [{ name = "lmnr", extras = ["all"], specifier = "==0.7.47" }]
 sandbox = []
 

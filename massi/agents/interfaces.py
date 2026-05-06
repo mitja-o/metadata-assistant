@@ -55,3 +55,11 @@ def create_ollama_llm(config: Config) -> ChatOllama:
 def create_openai_llm(config: Config) -> ChatOpenAI:
     assert config.api_key, "API key needs to be specified for OpenAI models"
     return ChatOpenAI(model=config.model_name, api_key=config.api_key)
+
+
+def create_uva_llm(config: Config) -> ChatOpenAI:
+    assert config.api_key, "API key needs to be specified for UvA LLM models"
+    assert config.model_url, "API URL needs to be specified for UvA LLM models"
+    return ChatOpenAI(
+        model=config.model_name, base_url=config.model_url, api_key=config.api_key
+    )

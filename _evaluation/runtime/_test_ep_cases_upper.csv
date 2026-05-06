@@ -1,0 +1,3 @@
+case_id,transform,source_data,expected_result
+c1,up,foo,FOO
+c2,up,bar,BAR
