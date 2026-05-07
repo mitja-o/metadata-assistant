@@ -1,7 +1,6 @@
 """Definitions of data transfer objects shared between the massi agents."""
 
 from enum import IntEnum, StrEnum
-from pathlib import Path
 from typing import Literal, TypedDict
 
 # Data Transfer Objects
@@ -147,9 +146,11 @@ class MetadataGapTaskOutcome(TypedDict):
 class FileOverview(TypedDict):
     location: str
     stats: str
+    raw_head: str
 
 
 class CSVDetails(TypedDict):
+    delimiter: str
     raw_head: str
     dataframe_head: str
     descriptive_stats: str

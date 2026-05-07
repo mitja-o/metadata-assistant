@@ -8,7 +8,7 @@ from typing import Any, Callable, Generator, Literal, TypedDict
 from dotenv import load_dotenv
 from langchain.chat_models import BaseChatModel
 from langchain.embeddings import Embeddings
-from lmnr import Laminar, observe
+from lmnr import Laminar
 import pandas as pd
 
 
@@ -242,6 +242,7 @@ class ScenarioConfig(TypedDict, total=False):
 
 class ScenarioSpec(TypedDict, total=False):
     # -- computed identifier
+    scenario_id: int
     scenario_tag: str
     # -- provided spec details
     idx: int
@@ -254,8 +255,7 @@ class ScenarioSpec(TypedDict, total=False):
 
 class DataCase(TypedDict, total=False):
     # -- computed identifier
-    case_tag: str
-    short_case_tag: str
+    case_id: int
     # -- provided case details
     working_copy_data_dir: str
     ground_truth_paper_path: str
@@ -269,7 +269,9 @@ class DataCase(TypedDict, total=False):
     timestamp: float | None = None
 
 
-class ScenarioXCase(ScenarioSpec, DataCase): ...
+class ScenarioXCase(ScenarioSpec, DataCase):
+    scenario_x_case_tag: str
+    short_scenario_x_case_tag: str
 
 
 type Scenario = tuple[int, ScenarioXCase]
@@ -317,26 +319,27 @@ def load_scenarios_x_cases(
     )
 
     # -- select scenarios
+    scenarios["scenario_id"] = scenarios.index
     selected_scenarios = scenarios[
         scenarios.apply(
             lambda s: all([s[qk] == qv for qk, qv in scenario_query.items()]), axis=1
         )
     ]
+    selected_scenarios["scenario_tag"] = selected_scenarios.apply(
+        lambda r: make_scenario_tag(r["scenario_id"], r), axis=1
+    )
 
     # -- select cases
+    cases["case_id"] = cases.index
     selected_cases = cases if case_head_limit is None else cases.head(case_head_limit)
-    selected_cases["case_id"] = selected_cases.index
 
     # -- generate selected scenario x case entries
     cross_scenario_cases = selected_scenarios.merge(selected_cases, how="cross")
-    cross_scenario_cases["scenario_tag"] = cross_scenario_cases.apply(
-        lambda r: make_scenario_tag(r.name, r), axis=1
-    )
-    cross_scenario_cases["case_tag"] = cross_scenario_cases.apply(
+    cross_scenario_cases["scenario_x_case_tag"] = cross_scenario_cases.apply(
         lambda r: make_case_tag(r["scenario_tag"], r["case_id"]), axis=1
     )
-    cross_scenario_cases["short_case_tag"] = cross_scenario_cases["case_tag"].apply(
-        lambda t: t.split("--")[0]
+    cross_scenario_cases["short_scenario_x_case_tag"] = cross_scenario_cases.apply(
+        lambda t: f"c_{t['case_id']}-x-s_{t['scenario_id']}", axis=1
     )
 
     # -- filter out the logged scenario x case entries
@@ -345,11 +348,11 @@ def load_scenarios_x_cases(
         if not scenario_x_case_log_csv.exists()
         else (
             cross_scenario_cases[
-                cross_scenario_cases["case_tag"].apply(
+                cross_scenario_cases["scenario_x_case_tag"].apply(
                     lambda t: t not in logged_case_tags
                 )
             ]
-            if (logged_case_tags := scenario_x_case_log["case_tag"].tolist())
+            if (logged_case_tags := scenario_x_case_log["scenario_x_case_tag"].tolist())
             else []
         )
     )
@@ -398,14 +401,15 @@ def pytest_generate_tests(metafunc: MetaScenarioSuite):
     input_arguments = []
     input_values = []
     for id, scenario_x_case in metafunc.cls.scenarios_x_cases:
-        input_arguments = ["id", "scenario_x_case"]
+        input_arguments = ["id", "tag", "scenario_x_case"]
         input_values.append(
             (
                 id,
+                scenario_x_case["scenario_x_case_tag"],
                 scenario_x_case,
             )
         )
-        run_ids.append(scenario_x_case["case_tag"])
+        run_ids.append(scenario_x_case["scenario_x_case_tag"])
     metafunc.parametrize(input_arguments, input_values, ids=run_ids, scope="class")
 
 
@@ -420,11 +424,10 @@ class Test_Massi_GBIF_Scenarios_X_Cases(ScenarioBasedSuite):
             "provider": "openai-platform",
             "schema": "dwc",
         },
-        case_head_limit=1,
+        case_head_limit=200,
     )
 
-    @observe(session_id=evaluation_time_id(f"run-{__name__}"))
-    def test_scenario(self, id, scenario_x_case, laminar_observer):
+    def test_scenario(self, id, tag, scenario_x_case, laminar_observer):
         # --- Arrange ---
         test_record = ScenarioXCase(**scenario_x_case)
         log_csv = get_scenario_x_case_log_csv_path()
@@ -459,7 +462,7 @@ class Test_Massi_GBIF_Scenarios_X_Cases(ScenarioBasedSuite):
                 "runtime_config": {
                     "output_directory": str(
                         DEFAULTS.ground_experiment_path(
-                            Path("out") / test_record["short_case_tag"]
+                            Path("out") / test_record["short_scenario_x_case_tag"]
                         )
                     ),
                     "working_directory": str(
@@ -474,19 +477,28 @@ class Test_Massi_GBIF_Scenarios_X_Cases(ScenarioBasedSuite):
 
         # --- Act ---
         thread_config = {"configurable": {"thread_id": str(random.randint(1, 100))}}
-        with timeit() as timer:
-
-            try:
-                outcome, success = (graph.invoke(base_state, thread_config), True)
-            except Exception as e:
-                outcome, success = (
-                    {
-                        "status": "exception",
-                        "error_content": str(e),
-                        "error_trace": str(e.__traceback__),
-                    },
-                    False,
-                )
+        with Laminar.start_as_current_span(
+            session_id=test_record["scenario_x_case_tag"],
+            name=test_record["short_scenario_x_case_tag"],
+            metadata={
+                "evaluation_id": evaluation_time_id(f"run-{__name__}"),
+                "run_id": id,
+                "tag": tag,
+            },
+        ) as _span:
+            with timeit() as timer:
+                try:
+                    outcome, success = (graph.invoke(base_state, thread_config), True)
+                except Exception as e:
+                    outcome, success = (
+                        {
+                            "status": "exception",
+                            "error_content": str(e),
+                            "error_trace": str(e.__traceback__),
+                        },
+                        False,
+                    )
+                Laminar.set_span_output(outcome)
         execution_time = timer()
         logger.info(f"{outcome=}")
 

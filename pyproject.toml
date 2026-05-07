@@ -19,6 +19,7 @@ dependencies = [
     "lxml>=6.1.0",
     "numpy>=2.4.4",
     "pandas>=3.0.0",
+    "pymupdf>=1.27.2.3",
     "pypdf>=6.10.0",
     "python-dotenv>=1.2.1",
     "requests>=2.32.5",

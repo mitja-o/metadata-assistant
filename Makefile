@@ -66,8 +66,13 @@ ${GBIF_DATA_DIR}/ground_truth/.key: ${GBIF_DATA_DIR}/working_copy/.key
 	@echo "🗝️ Making a target key"
 	touch ${GBIF_DATA_DIR}/ground_truth/.key
 
+# Create the output storage directory
+${GBIF_DATA_DIR}/out/.key: ${GBIF_DATA_DIR}/ground_truth/.key
+	@echo "🗝️ Making a target key"
+	touch ${GBIF_DATA_DIR}/out/.key
+
 # prepare the case inputs
-_evaluation/runtime/gbif_cases.csv: ${GBIF_DATA_DIR}/ground_truth/.key
+_evaluation/runtime/gbif_cases.csv: ${GBIF_DATA_DIR}/out/.key
 	mkdir -p _evaluation/runtime/
 	cp ${GBIF_DATA_DIR}/downloaded_gbif_cases.csv _evaluation/runtime/gbif_cases.csv
 

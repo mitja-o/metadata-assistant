@@ -71,7 +71,7 @@ Return the data in this structure:
     "gap_description": "Brief explanation of what is missing",
     "gap_replacement_pattern": "The exact full string to be replaced (e.g., '{XMLBlueprintGapPattern.get_gap_pattern(gap_id="GAP_001", gap_type="URI", gap_description="METADATA_LOCATION")}')",
     "gap_scope_files": ["list_of_relevant_filenames.csv"],
-    "gap_derivation_request": "Detailed prompt for the execution agent. Include: 1. Goal 2. Column logic 3. Transformation rules (if any) 4. Fallback/Default value strategy."
+    "gap_derivation_request": "Detailed prompt for the execution agent. Include: 1. Context of the original Metadata XML 2. Current and parent XML elements 3. Goal of derivation 4. Column logic and value constraints 5. Transformation rules (if any) 6. Fallback/Default value strategy. Render the prompt with clear headings and paragraphs and emphasise critical elements."
   }}
 ]}}
 ```
@@ -79,6 +79,7 @@ Return the data in this structure:
 ### Constraints & Quality Gates
 
 * **No Hallucinations:** Only include gaps explicitly marked in the Blueprint.
+* **Completeness:** All gaps present in the Blueprint must be addressed in the plan.
 * **Atomicity:** Each `gap_derivation_request` must be a self-contained prompt. Do not refer to "the previous message" or "other gaps."
 * **Grounding:** The `gap_scope_files` must be given and can not be empty. Specify the files that are most relevant based on the context and the blueprint structure. ALWAYS use the exact file paths specified in the Data Context section.
 * **Precision:** The `gap_replacement_pattern` must be an **exact string match** to allow for programmatic `string.replace()` operations later.
@@ -98,7 +99,9 @@ Return the data in this structure:
 {architect_prompt}
 
 **[XML BLUEPRINT]**
+---
 {xml_blueprint}
+---
 """
 
     def invoke(self, prompt: str) -> MetadataGapDerivationPlan:

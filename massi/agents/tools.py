@@ -1,9 +1,12 @@
+from csv import Sniffer
 import logging
 import os
 import pathlib as pl
 from abc import ABC, abstractmethod
 from dataclasses import dataclass
 from typing import Any, Iterator
+import warnings
+import itertools as itx
 
 import pandas as pd
 import xmlschema as xs
@@ -47,12 +50,23 @@ def get_file_stats(path: pl.Path) -> tuple[pl.Path, os.stat_result]:
     return (path, path.stat())
 
 
-def get_csv_details(csv: pl.Path) -> CSVDetails:
+def get_raw_file_head(
+    path: pl.Path, head_size: int = 10, max_line_length: int | None = None
+) -> str:
+    with open(path) as fp:
+        head_lines = itx.islice(fp, head_size)
+        if max_line_length is not None:
+            head_lines = [hl[:max_line_length] for hl in head_lines]
+        raw_head = "\n".join(head_lines)
+    return raw_head
+
+
+def get_csv_details(csv: pl.Path, separator: str | None = None) -> CSVDetails:
     head_size: int = 5
-    with open(csv) as fp:
-        raw_head = "\n".join([next(fp) for _ in range(head_size)])
-    df = pd.read_csv(csv)
+    raw_head = get_raw_file_head(csv, head_size=head_size)
+    df = pd.read_csv(csv, sep=separator, on_bad_lines="warn")
     details: CSVDetails = {
+        "delimiter": separator,
         "column_count": df.shape[1],
         "row_count": df.shape[0],
         "head_size": head_size,
@@ -66,11 +80,24 @@ def get_csv_details(csv: pl.Path) -> CSVDetails:
     return details
 
 
+def detect_delim(file, num_rows=1):
+    sniffer = Sniffer()
+    with open(file, "r") as f:
+        for _ in range(num_rows):
+            line = next(f).strip()
+            sniffed = sniffer.sniff(line)
+
+    return sniffed.delimiter
+
+
 def safe_get_csv_details(csv: pl.Path) -> CSVDetails | None:
     try:
-        return get_csv_details(csv)
+        separator = detect_delim(csv, num_rows=1)
+        return get_csv_details(csv, separator)
     except Exception as e:
         logger.error(e)
+        logger.warning(e)
+        warnings.warn(f"Could not read the CSV: {csv=} -->\n{e=}")
         return None
 
 

@@ -8,7 +8,7 @@ from typing import Self, TypedDict
 from langchain.chat_models import BaseChatModel
 from langchain.embeddings import Embeddings
 from langchain.messages import HumanMessage, SystemMessage
-from langchain_community.document_loaders import PyPDFLoader
+from langchain_community.document_loaders import PyMuPDFLoader
 from langchain_community.vectorstores import InMemoryVectorStore
 from langchain_core.documents import Document
 from langchain_core.vectorstores.base import VectorStoreRetriever
@@ -181,7 +181,7 @@ type AuthorWorkflow = CompiledStateGraph[
 
 
 def load_document_chunks(pdf_path: Path) -> list[Document]:
-    loader = PyPDFLoader(pdf_path)
+    loader = PyMuPDFLoader(pdf_path)
     docs = loader.load()
     text_splitter = RecursiveCharacterTextSplitter(chunk_size=1000, chunk_overlap=100)
     return text_splitter.split_documents(docs)

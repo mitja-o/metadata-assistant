@@ -32,6 +32,7 @@ from massi.agents.team.operators import GapDerivationOperator
 from massi.agents.team.planner import MetadataBlueprintPlanner
 from massi.agents.tools import (
     get_file_stats,
+    get_raw_file_head,
     get_xmlschema_validator,
     safe_get_csv_details,
     walk_working_dir_for_files,
@@ -222,7 +223,12 @@ def inventorize_dataset(state: MassiCoreState) -> MassiCoreState:
     work_dir = state["settings"]["runtime_config"]["working_directory"]
     paths = map(get_file_stats, walk_working_dir_for_files(seed_path=work_dir))
     file_overviews: list[FileOverview] = [
-        {"location": str(p), "stats": str(s)} for (p, s) in paths
+        {
+            "location": str(p),
+            "stats": str(s),
+            "raw_head": get_raw_file_head(p, head_size=5, max_line_length=1000),
+        }
+        for (p, s) in paths
     ]
     tabular_file_overviews: list[CSVOverview] = [
         {**f, "details": details}
@@ -323,6 +329,7 @@ def prepare_metadata_blueprint_architect(
         [
             (
                 f'==> {c["location"]} <==\n'
+                f'-- delimiter: "({c["details"]["delimiter"]}" --\n'
                 f'-- head ({c["details"]["head_size"]} / {c["details"]["row_count"]} rows) --\n'
                 f'```csv\n{c["details"]["raw_head"]}\n```'
                 f'\n-- column descriptive statistics ({c["details"]["column_count"]} columns) --\n'
@@ -333,7 +340,7 @@ def prepare_metadata_blueprint_architect(
     )
     file_overvew = "\n".join(
         [
-            f'==> {fl["location"]} <==\n-- file stats --\n{fl["stats"]}'
+            f'==> {fl["location"]} <==\n-- file stats --\n{fl["stats"]}\n-- file head --\n{fl["raw_head"]}'
             for fl in state["dataset"]["files"]
         ]
     )
