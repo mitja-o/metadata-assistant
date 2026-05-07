@@ -34,6 +34,11 @@ dev = [
     "langgraph-cli[inmem]>=0.4.11",
     "mypy>=1.19.1",
     "pytest>=9.0.2",
+    "xmldiff>=2.7.0",
+]
+notebook = [
+    "jupyterlab>=4.5.7",
+    "matplotlib>=3.10.9",
 ]
 observability = ["lmnr[all]==0.7.47"]
 sandbox = []
