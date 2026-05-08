@@ -430,7 +430,7 @@ class Test_Massi_GBIF_Scenarios_X_Cases(ScenarioBasedSuite):
             # "schema": "dwc",
             "schema": "eml",
         },
-        case_head_limit=10,
+        case_head_limit=40,
     )
 
     def test_scenario(self, id, tag, scenario_x_case, laminar_observer):
