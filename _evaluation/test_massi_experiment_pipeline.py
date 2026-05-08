@@ -426,10 +426,10 @@ class Test_Massi_GBIF_Scenarios_X_Cases(ScenarioBasedSuite):
         {
             "variant": "full",
             "provider": "openai-platform",
-            # "schema": "dwc",
-            "schema": "eml",
+            "schema": "dwc",
+            # "schema": "eml",
         },
-        case_head_limit=70,
+        case_head_limit=200,
     )
 
     def test_scenario(self, id, tag, scenario_x_case, laminar_observer):
