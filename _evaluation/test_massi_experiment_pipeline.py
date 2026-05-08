@@ -142,6 +142,11 @@ class DEFAULTS:
         },
     }
 
+    schema_to_ground_truth_key = {
+        "dwc": "ground_truth_metadata_dwc",
+        "eml": "ground_truth_metadata_eml",
+    }
+
 
 def build_core_dependencies(
     execution_mode: MassiExecutionMode,
@@ -265,7 +270,7 @@ class DataCase(TypedDict, total=False):
     # --- case logging details
     success: bool = True
     outcome_json: str | None = None
-    duration_ms: float
+    duration_seconds: float
     timestamp: float | None = None
 
 
@@ -362,7 +367,7 @@ def load_scenarios_x_cases(
 
 def build_log_entry(
     scenario_x_case: ScenarioXCase,
-    duration_ms: float,
+    duration_seconds: float,
     success: bool = True,
     outcome_json: str | None = None,
 ) -> pd.DataFrame:
@@ -372,7 +377,7 @@ def build_log_entry(
                 **scenario_x_case,
                 "success": success,
                 "outcome_json": outcome_json,
-                "duration_ms": duration_ms,
+                "duration_seconds": duration_seconds,
                 "timestamp": time(),
             }
         ]
@@ -422,9 +427,10 @@ class Test_Massi_GBIF_Scenarios_X_Cases(ScenarioBasedSuite):
         {
             "variant": "full",
             "provider": "openai-platform",
-            "schema": "dwc",
+            # "schema": "dwc",
+            "schema": "eml",
         },
-        case_head_limit=200,
+        case_head_limit=10,
     )
 
     def test_scenario(self, id, tag, scenario_x_case, laminar_observer):
@@ -457,6 +463,15 @@ class Test_Massi_GBIF_Scenarios_X_Cases(ScenarioBasedSuite):
         graph = workflow.graph
 
         # prepare inputs
+        ground_truth_goal: MetadataGoal = {
+            "ground_truth_metadata_file": DEFAULTS.schema_to_ground_truth_key[
+                test_record["schema"]
+            ]
+        } if test_record["variant"] == "ablation" else {}
+        core_goal: MetadataGoal = DEFAULTS.schema_to_metadata_goal[
+            test_record["schema"]
+        ]
+        goal_input = {**core_goal, **ground_truth_goal}
         base_state: MassiCoreState = {
             "settings": {
                 "runtime_config": {
@@ -472,7 +487,7 @@ class Test_Massi_GBIF_Scenarios_X_Cases(ScenarioBasedSuite):
                     ),
                 },
             },
-            "goals": [DEFAULTS.schema_to_metadata_goal[test_record["schema"]]],
+            "goals": [goal_input],
         }
 
         # --- Act ---
