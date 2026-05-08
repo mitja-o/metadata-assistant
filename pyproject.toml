@@ -28,6 +28,9 @@ dependencies = [
 ]
 
 [dependency-groups]
+analysis = [
+    "matplotlib>=3.10.9",
+]
 dev = [
     "black>=26.1.0",
     "isort>=7.0.0",
@@ -39,7 +42,6 @@ dev = [
 ]
 notebook = [
     "jupyterlab>=4.5.7",
-    "matplotlib>=3.10.9",
 ]
 observability = ["lmnr[all]==0.7.47"]
 sandbox = []

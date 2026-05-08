@@ -2289,6 +2289,9 @@ dependencies = [
 ]
 
 [package.dev-dependencies]
+analysis = [
+    { name = "matplotlib" },
+]
 dev = [
     { name = "black" },
     { name = "isort" },
@@ -2300,7 +2303,6 @@ dev = [
 ]
 notebook = [
     { name = "jupyterlab" },
-    { name = "matplotlib" },
 ]
 observability = [
     { name = "lmnr", extra = ["all"] },
@@ -2331,6 +2333,7 @@ requires-dist = [
 ]
 
 [package.metadata.requires-dev]
+analysis = [{ name = "matplotlib", specifier = ">=3.10.9" }]
 dev = [
     { name = "black", specifier = ">=26.1.0" },
     { name = "isort", specifier = ">=7.0.0" },
@@ -2340,10 +2343,7 @@ dev = [
     { name = "pytest-xdist", extras = ["psutil"], specifier = ">=3.8.0" },
     { name = "xmldiff", specifier = ">=2.7.0" },
 ]
-notebook = [
-    { name = "jupyterlab", specifier = ">=4.5.7" },
-    { name = "matplotlib", specifier = ">=3.10.9" },
-]
+notebook = [{ name = "jupyterlab", specifier = ">=4.5.7" }]
 observability = [{ name = "lmnr", extras = ["all"], specifier = "==0.7.47" }]
 sandbox = []
 

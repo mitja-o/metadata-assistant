@@ -44,9 +44,19 @@ ${GBIF_DATA_DIR}/working_copy/.key: ${GBIF_DATA_DIR}/.key
 	mkdir -p ${GBIF_DATA_DIR}/working_copy
 	cp -r ${GBIF_DATA_DIR}/data ${GBIF_DATA_DIR}/working_copy
 	@echo "🗃️ Unpacking the working data"
-	for z in  ${GBIF_DATA_DIR}/working_copy/data/*.zip; do \
+	for z in ${GBIF_DATA_DIR}/working_copy/data/*.zip; do \
 		echo "~~ placing: $$z --> $${z%.*} ..." ; \
-		unzip "$$z" -x ".*" -x "__*" -x "*.xml" -d $${z%.*} ; \
+		format=$$(7zz l "$$z" | grep "Type =" | awk '{print $$3}') ; \
+		case "$${format}" in \
+			"gzip") \
+				echo "   (Detected wrapper: $${format})" ; \
+				7zz x "$$z" -so > "$$z.tmp" ; \
+				7zz x "$$z.tmp" -y -o"$${z%.*}" -xr!".*" -xr!"__*" -xr!"*.xml" > /dev/null ; \
+				rm "$$z.tmp" ;; \
+			*) \
+				echo "   (Detected standard: $${format})" ; \
+				7zz x "$$z" -y -o"$${z%.*}" -xr!".*" -xr!"__*" -xr!"*.xml" > /dev/null ;; \
+		esac ; \
 	done
 	@echo "🗝️ Making a target key"
 	touch ${GBIF_DATA_DIR}/working_copy/.key
@@ -59,9 +69,19 @@ ${GBIF_DATA_DIR}/ground_truth/.key: ${GBIF_DATA_DIR}/working_copy/.key
 	mv ${GBIF_DATA_DIR}/data ${GBIF_DATA_DIR}/ground_truth
 	mv ${GBIF_DATA_DIR}/papers ${GBIF_DATA_DIR}/ground_truth
 	@echo "🗃️ Unpacking the ground truth metadata"
-	for z in  ${GBIF_DATA_DIR}/ground_truth/data/*.zip; do \
+	@for z in ${GBIF_DATA_DIR}/ground_truth/data/*.zip; do \
 		echo "~~ placing: $$z --> $${z%.*} ..." ; \
-		unzip "$$z" eml.xml meta.xml -d $${z%.*} ; \
+		format=$$(7zz l "$$z" | grep "Type =" | awk '{print $$3}') ; \
+		case "$${format}" in \
+			"gzip") \
+				echo "   (Detected wrapper: $${format})" ; \
+				7zz x "$$z" -so > "$$z.tmp" ; \
+				7zz x "$$z.tmp" -y -o"$${z%.*}" eml.xml meta.xml > /dev/null ; \
+				rm "$$z.tmp" ;; \
+			*) \
+				echo "   (Detected standard: $${format})" ; \
+				7zz x "$$z" -y -o"$${z%.*}" eml.xml meta.xml > /dev/null ;; \
+		esac ; \
 	done
 	@echo "🗝️ Making a target key"
 	touch ${GBIF_DATA_DIR}/ground_truth/.key
@@ -72,8 +92,12 @@ ${GBIF_DATA_DIR}/out/.key: ${GBIF_DATA_DIR}/ground_truth/.key
 	@echo "🗝️ Making a target key"
 	touch ${GBIF_DATA_DIR}/out/.key
 
+${DATA_DIR}/.key: ${GBIF_DATA_DIR}/out/.key
+	@echo "🗝️ Making a target key"
+	touch ${GBIF_DATA_DIR}/.key
+
 # prepare the case inputs
-_evaluation/runtime/gbif_cases.csv: ${GBIF_DATA_DIR}/out/.key
+_evaluation/runtime/gbif_cases.csv: ${DATA_DIR}/.key
 	mkdir -p _evaluation/runtime/
 	cp ${GBIF_DATA_DIR}/downloaded_gbif_cases.csv _evaluation/runtime/gbif_cases.csv
 
@@ -120,6 +144,13 @@ start-observer-lmnr start-luminar start-lmnr: ./utils/lmnr
 .PHONY: check-lmnr-frontend-port
 check-lmnr-frontend-port: ./utils/lmnr
 	docker container inspect -f '{{.NetworkSettings.Ports}}' lmnr-frontend-1
+
+# Local dev platform
+# ==================
+
+.PHONY: start-local-notebook
+start-local-notebook start-lnb:
+	uv run --group notebook --group dev jupyter lab
 
 # Containerized (dev) runtime
 # ===========================
