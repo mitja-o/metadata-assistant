@@ -77,7 +77,7 @@ class XMLMasker(MetadataMasker):
             str: string representation of the masked XML
 
         Examples:
-            >>> masker = EMLMasker()
+            >>> masker = XMLMasker()
             >>> dwc_xml = __EXAMPLE_XML__.get("dwc_text")
             >>> print(masker.invoke(dwc_xml))
             <archive xmlns="http://rs.tdwg.org/dwc/text/" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xmlns:xs="http://www.w3.org/2001/XMLSchema" xsi:schemaLocation="{{GAP_001:ATTRIBUTE:{HTTP://RS.TDWG.ORG/DWC/TEXT/}ARCHIVE-{HTTP://WWW.W3.ORG/2001/XMLSCHEMA-INSTANCE}SCHEMALOCATION}}">

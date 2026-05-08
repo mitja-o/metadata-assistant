@@ -68,6 +68,7 @@ ${GBIF_DATA_DIR}/ground_truth/.key: ${GBIF_DATA_DIR}/working_copy/.key
 
 # Create the output storage directory
 ${GBIF_DATA_DIR}/out/.key: ${GBIF_DATA_DIR}/ground_truth/.key
+	mkdir -p ${GBIF_DATA_DIR}/out
 	@echo "🗝️ Making a target key"
 	touch ${GBIF_DATA_DIR}/out/.key
 

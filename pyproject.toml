@@ -34,6 +34,7 @@ dev = [
     "langgraph-cli[inmem]>=0.4.11",
     "mypy>=1.19.1",
     "pytest>=9.0.2",
+    "pytest-xdist[psutil]>=3.8.0",
     "xmldiff>=2.7.0",
 ]
 notebook = [
@@ -45,7 +46,7 @@ sandbox = []
 
 [tool.pytest]
 minversion = "9.0"
-addopts = ["--doctest-modules", "-rA"]
+addopts = ["--doctest-modules", "-rA", "-n", "logical"]
 testpaths = ["massi"]
 log_format = "%(asctime)s %(levelname)s %(message)s"
 log_date_format = "%Y-%m-%d %H:%M:%S"
