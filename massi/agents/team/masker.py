@@ -1,5 +1,6 @@
-from lxml import etree
 from abc import ABC, abstractmethod
+
+from lxml import etree
 
 from massi.agents.team._dto import MetadataBlueprint, XMLBlueprintGapPattern
 

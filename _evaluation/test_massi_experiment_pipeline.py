@@ -1,20 +1,19 @@
-from contextlib import contextmanager
 import json
+import logging
 import os
-from pathlib import Path
 import random
+from contextlib import contextmanager
+from pathlib import Path
 from time import perf_counter, time
 from typing import Any, Callable, Generator, Literal, TypedDict
+
+import pandas as pd
+import pytest
 from dotenv import load_dotenv
 from langchain.chat_models import BaseChatModel
 from langchain.embeddings import Embeddings
 from lmnr import Laminar
-import pandas as pd
-
-
-import logging
-
-import pytest
+from tenacity import Retrying, stop_after_attempt, stop_after_delay
 
 from massi.agents.interfaces import Config, create_openai_llm, create_uva_llm
 from massi.agents.team._dto import (
@@ -430,10 +429,12 @@ class Test_Massi_GBIF_Scenarios_X_Cases(ScenarioBasedSuite):
             # "schema": "dwc",
             "schema": "eml",
         },
-        case_head_limit=40,
+        case_head_limit=70,
     )
 
     def test_scenario(self, id, tag, scenario_x_case, laminar_observer):
+        # --- Execution Settings ---
+        one_and_half_hour_in_seconds = 60 * 180
         # --- Arrange ---
         test_record = ScenarioXCase(**scenario_x_case)
         log_csv = get_scenario_x_case_log_csv_path()
@@ -463,11 +464,15 @@ class Test_Massi_GBIF_Scenarios_X_Cases(ScenarioBasedSuite):
         graph = workflow.graph
 
         # prepare inputs
-        ground_truth_goal: MetadataGoal = {
-            "ground_truth_metadata_file": DEFAULTS.schema_to_ground_truth_key[
-                test_record["schema"]
-            ]
-        } if test_record["variant"] == "ablation" else {}
+        ground_truth_goal: MetadataGoal = (
+            {
+                "ground_truth_metadata_file": DEFAULTS.schema_to_ground_truth_key[
+                    test_record["schema"]
+                ]
+            }
+            if test_record["variant"] == "ablation"
+            else {}
+        )
         core_goal: MetadataGoal = DEFAULTS.schema_to_metadata_goal[
             test_record["schema"]
         ]
@@ -503,8 +508,19 @@ class Test_Massi_GBIF_Scenarios_X_Cases(ScenarioBasedSuite):
         ) as _span:
             with timeit() as timer:
                 try:
-                    outcome, success = (graph.invoke(base_state, thread_config), True)
+                    for attempt in Retrying(
+                        stop=(
+                            stop_after_delay(one_and_half_hour_in_seconds)
+                            | stop_after_attempt(1)
+                        )
+                    ):
+                        with attempt:
+                            outcome, success = (
+                                graph.invoke(base_state, thread_config),
+                                True,
+                            )
                 except Exception as e:
+                    logger.error(e)
                     outcome, success = (
                         {
                             "status": "exception",

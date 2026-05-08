@@ -1,12 +1,12 @@
-from csv import Sniffer
+import itertools as itx
 import logging
 import os
 import pathlib as pl
+import warnings
 from abc import ABC, abstractmethod
+from csv import Sniffer
 from dataclasses import dataclass
 from typing import Any, Iterator
-import warnings
-import itertools as itx
 
 import pandas as pd
 import xmlschema as xs

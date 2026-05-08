@@ -105,7 +105,7 @@ _evaluation/runtime/gbif_cases.csv: ${DATA_DIR}/.key
 .PHONY: evaluate
 evaluate: pyproject.toml _evaluation _evaluation/runtime/gbif_cases.csv
 	mkdir -p _evaluation/reports/runs/
-	uv run --group dev --group sandbox pytest _evaluation \
+	uv run --group dev --group sandbox --group observability pytest _evaluation \
 		| tee '_evaluation/reports/runs/run-$(shell date +%s).txt'
 
 # Developer hints
