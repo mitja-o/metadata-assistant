@@ -1,11 +1,8 @@
 import logging
-import shutil
-import tempfile
 from functools import partial
 from pathlib import Path
 
 import duckdb
-import pandas as pd
 from langchain_core.messages import (
     BaseMessage,
     HumanMessage,
@@ -28,6 +25,7 @@ logger = logging.getLogger(__name__)
 # Interface
 # ---------
 
+
 type DataExplorerProps = OperatorProps
 type DataExplorerRequest = OperatorRequest
 
@@ -42,18 +40,9 @@ class DataExplorerResponse(OperatorResponse):
 # -----
 
 
-class DEFAULTS:
-    tabular_prefix = "tab_"
-    plaintext_prefix = "ref_"
-
-
 class DataExplorerState(MessagesState, total=False):
     request: DataExplorerRequest
     """The request sent to the data explorer"""
-    workspace_path: str | None
-    """Path to the standardized CSV files ready for analysis"""
-    file_map: dict[str, str]
-    """Map of original input files to their workspace copies"""
     current_turn: int = 0
     """Current turn of the exploration."""
     progress_summary: str
@@ -86,20 +75,18 @@ You MUST terminate if {current_turn} is larger than {turn_limit}.
 """
 
     @staticmethod
-    def workspace_manifest_prompt(file_map: dict[str, str]) -> str:
+    def workspace_manifest_prompt(request: DataExplorerRequest) -> str:
         """
         Creates a strict mapping table to prevent the agent from using
         original file names in SQL queries.
         """
         tab_rows = [
-            f"| `{k}` | **`{v}`** |"
-            for k, v in file_map.items()
-            if Path(v).name.startswith(DEFAULTS.tabular_prefix)
+            f"| `{Path(fp).name}` | **`{str(Path(fp))}`** |"
+            for fp in request["tabular_files"]
         ]
-        ref_rows = [
-            f"| `{k}` | **`{v}`** |"
-            for k, v in file_map.items()
-            if Path(v).name.startswith(DEFAULTS.plaintext_prefix)
+        ptext_rows = [
+            f"| `{Path(fp).name}` | **FORBIDDEN** |"
+            for fp in request["plaintext_files"]
         ]
 
         return f"""
@@ -109,10 +96,11 @@ You MUST terminate if {current_turn} is larger than {turn_limit}.
 | :--- | :--- |
 {"\n".join(tab_rows)}
 
-**REFERENCE TABLES** (Query these if you need to look up definitions or logic):
+### NON-QUERIABLE FILES
+**UNREADABLE FILES** (Do not query these files, refuse the instruction if it requires to access tehm):
 | Original File | SQL Path |
 | :--- | :--- |
-{"\n".join(ref_rows)}
+{"\n".join(ptext_rows)}
 """.strip()
 
     @classmethod
@@ -323,10 +311,15 @@ TOOL_NODE = "tools"
 # *__Conditional__*
 def check_for_usable_request(state: DataExplorerState) -> str:
     return (
-        standardise_input_files.__name__
-        if (
-            (state["request"]["plaintext_files"] or state["request"]["tabular_files"])
-            and state["request"]["instruction"]
+        call_explorer_agent.__name__
+        if all(
+            [
+                (
+                    state["request"]["plaintext_files"]
+                    or state["request"]["tabular_files"]
+                ),
+                bool(state["request"]["instruction"]),
+            ]
         )
         else refuse_processing.__name__
     )
@@ -344,55 +337,6 @@ def refuse_processing(
     return {"messages": [response], "exploration_result": response}
 
 
-# FIXME(effeciency): delegate this task upstream to avoid reruns on each gap derivation
-def standardise_input_files(state: DataExplorerState) -> DataExplorerState:
-    """Standardizes tabular data into a consistent format and chunks plaintext files into queryable CSVs."""
-    workspace = Path(tempfile.mkdtemp(prefix="massi_"))
-    tabular_files = state["request"].get("tabular_files", [])
-
-    # Standardise tabular files
-    tabular_file_map = {
-        Path(f).name: str(
-            (workspace / f"{DEFAULTS.tabular_prefix}_{i}_{Path(f).stem}.csv").absolute()
-        )
-        for i, f in enumerate(tabular_files)
-    }
-    tabular_source_target_pairs = zip(tabular_files, tabular_file_map.values())
-    for src, dst in tabular_source_target_pairs:
-        try:
-            pd.read_csv(src, sep=None, engine="python").to_csv(dst, index=False)
-        except Exception as e:
-            logger.error(f"Could not standardise tabular file `{src}` into `dst`: {e}")
-
-    # Standardise tabular files
-    plaintext_files = state["request"].get("plaintext_files", [])
-    plaintext_file_map = {
-        Path(f).name: str(
-            (
-                workspace / f"{DEFAULTS.plaintext_prefix}_{i}_{Path(f).stem}.csv"
-            ).absolute()
-        )
-        for i, f in enumerate(plaintext_files)
-    }
-    plaintext_source_target_pairs = zip(plaintext_files, plaintext_file_map.values())
-    for src, dst in plaintext_source_target_pairs:
-        txt = Path(src).read_text(encoding="utf-8")
-        chunks = [txt[i : i + 500] for i in range(0, len(txt), 500)]
-        try:
-            pd.DataFrame({"chunk_id": range(len(chunks)), "content": chunks}).to_csv(
-                dst, index=False
-            )
-        except Exception as e:
-            logger.error(
-                f"Could not standardise plaintext file `{src}` into `dst`: {e}"
-            )
-
-    return {
-        "workspace_path": str(workspace),
-        "file_map": {**tabular_file_map, **plaintext_file_map},
-    }
-
-
 def call_explorer_agent(
     state: DataExplorerState, props: DataExplorerProps | None = None
 ) -> DataExplorerState:
@@ -403,7 +347,7 @@ def call_explorer_agent(
     tools = [query_dataset]
     tool_using_agent = model.bind_tools(tools, parallel_tool_calls=False)
 
-    workspace_manifest = PromptBuilder.workspace_manifest_prompt(state["file_map"])
+    workspace_manifest = PromptBuilder.workspace_manifest_prompt(state["request"])
     current_turn = state.get("current_turn", 0)
     turn_limit = props["turn_limit"]
     system_prompt = PromptBuilder.sytem_prompt(
@@ -426,8 +370,12 @@ def call_explorer_agent(
 
 
 # *__Conditional__*
-def tool_or_cleanup(state: DataExplorerState) -> str:
-    return TOOL_NODE if state["messages"][-1].tool_calls else cleanup.__name__
+def tool_or_exit(state: DataExplorerState) -> str:
+    return (
+        TOOL_NODE
+        if state["messages"][-1].tool_calls
+        else get_final_exploration_result.__name__
+    )
 
 
 def summarize_progress(
@@ -492,15 +440,6 @@ def get_final_exploration_result(state: DataExplorerState) -> DataExplorerState:
     return {"exploration_result": last_message}
 
 
-def cleanup(state: DataExplorerState):
-    """Removes temp files and prepares the final state."""
-    path = state.get("workspace_path")
-    if path and Path(path).exists():
-        shutil.rmtree(path)
-        logger.debug(f"massi cleanup: removed workspace: {path}")
-    return {"workspace_path": None}
-
-
 def summarise_output_result(
     state: DataExplorerState, props: DataExplorerProps | None = None
 ) -> DataExplorerState:
@@ -525,11 +464,9 @@ def create_explorer_subgraph(props: DataExplorerProps):
     builder.add_node(TOOL_NODE, ToolNode([query_dataset]))
     nodes = [
         (refuse_processing, {"props": props}),
-        (standardise_input_files, {}),
         (call_explorer_agent, {"props": props}),
         (summarize_progress, {"props": props}),
         (halt_on_exceeded_budget, {"props": props}),
-        (cleanup, {}),
         (get_final_exploration_result, {}),
         (summarise_output_result, {"props": props}),
     ]
@@ -541,17 +478,16 @@ def create_explorer_subgraph(props: DataExplorerProps):
     builder.add_conditional_edges(
         START,
         check_for_usable_request,
-        [refuse_processing.__name__, standardise_input_files.__name__],
+        [refuse_processing.__name__, call_explorer_agent.__name__],
     )
     # Refusal branch
     builder.add_edge(refuse_processing.__name__, summarise_output_result.__name__)
     # Exploration branch
-    builder.add_edge(standardise_input_files.__name__, call_explorer_agent.__name__)
     # Tool loop for the agent to iteratively perform analysis
     builder.add_conditional_edges(
         call_explorer_agent.__name__,
-        tool_or_cleanup,
-        [TOOL_NODE, cleanup.__name__],
+        tool_or_exit,
+        [TOOL_NODE, get_final_exploration_result.__name__],
     )
     builder.add_edge(TOOL_NODE, summarize_progress.__name__)
     builder.add_conditional_edges(
@@ -559,8 +495,9 @@ def create_explorer_subgraph(props: DataExplorerProps):
         partial(check_turn_budget, props=props),
         [call_explorer_agent.__name__, halt_on_exceeded_budget.__name__],
     )
-    builder.add_edge(halt_on_exceeded_budget.__name__, cleanup.__name__)
-    builder.add_edge(cleanup.__name__, get_final_exploration_result.__name__)
+    builder.add_edge(
+        halt_on_exceeded_budget.__name__, get_final_exploration_result.__name__
+    )
     builder.add_edge(
         get_final_exploration_result.__name__, summarise_output_result.__name__
     )
