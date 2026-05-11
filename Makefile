@@ -33,6 +33,7 @@ GBIF_DATA_DIR=${DATA_DIR}/gbif_data_archive
 
 # unpack the download
 ${GBIF_DATA_DIR}/.key: _downloads/gbif_data_archive.zip
+	rm -rf ${GBIF_DATA_DIR}/.key
 	mkdir -p ${DATA_DIR}
 	unzip _downloads/gbif_data_archive.zip -d ${DATA_DIR}
 	@echo "🗝️ Making a target key"
@@ -40,6 +41,7 @@ ${GBIF_DATA_DIR}/.key: _downloads/gbif_data_archive.zip
 
 # prepare the working data
 ${GBIF_DATA_DIR}/working_copy/.key: ${GBIF_DATA_DIR}/.key
+	rm -rf ${GBIF_DATA_DIR}/working_copy/.key
 	@echo "🚚 Preparing the working data"
 	mkdir -p ${GBIF_DATA_DIR}/working_copy
 	cp -r ${GBIF_DATA_DIR}/data ${GBIF_DATA_DIR}/working_copy
@@ -63,6 +65,7 @@ ${GBIF_DATA_DIR}/working_copy/.key: ${GBIF_DATA_DIR}/.key
 
 # prepare the ground truth
 ${GBIF_DATA_DIR}/ground_truth/.key: ${GBIF_DATA_DIR}/working_copy/.key
+	rm -rf ${GBIF_DATA_DIR}/ground_truth/.key
 	@echo "🚚 Preparing the ground truth data"
 	mkdir -p ${GBIF_DATA_DIR}/ground_truth/data
 	mkdir -p ${GBIF_DATA_DIR}/ground_truth/papers
@@ -88,22 +91,25 @@ ${GBIF_DATA_DIR}/ground_truth/.key: ${GBIF_DATA_DIR}/working_copy/.key
 
 # Create the output storage directory
 ${GBIF_DATA_DIR}/out/.key: ${GBIF_DATA_DIR}/ground_truth/.key
+	rm -rf ${GBIF_DATA_DIR}/out/.key
 	mkdir -p ${GBIF_DATA_DIR}/out
 	@echo "🗝️ Making a target key"
 	touch ${GBIF_DATA_DIR}/out/.key
 
 ${DATA_DIR}/.key: ${GBIF_DATA_DIR}/out/.key
+	rm -rf ${DATA_DIR}/.key
 	@echo "🗝️ Making a target key"
-	touch ${GBIF_DATA_DIR}/.key
+	touch ${DATA_DIR}/.key
 
 # prepare the case inputs
-_evaluation/runtime/gbif_cases.csv: ${DATA_DIR}/.key
+_evaluation/runtime/gbif_cases.csv: ${DATA_DIR}/.key ${GBIF_DATA_DIR}/downloaded_gbif_cases.csv
 	mkdir -p _evaluation/runtime/
 	cp ${GBIF_DATA_DIR}/downloaded_gbif_cases.csv _evaluation/runtime/gbif_cases.csv
 
 # run the experiments
 .PHONY: evaluate
 evaluate: pyproject.toml _evaluation _evaluation/runtime/gbif_cases.csv
+	@echo "⚗️ Running the experiments"
 	mkdir -p _evaluation/reports/runs/
 	uv run --group dev --group sandbox --group observability pytest _evaluation \
 		| tee '_evaluation/reports/runs/run-$(shell date +%s).txt'

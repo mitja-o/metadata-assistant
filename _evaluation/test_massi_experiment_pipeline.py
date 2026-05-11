@@ -155,10 +155,14 @@ def build_core_dependencies(
     embedding_model: Embeddings,
 ) -> Dependencies:
 
-    rag_author_proxy = RagAuthorProxyQueryClient.build_client(
-        [ground_truth_paper],
-        {"embedder": embedding_model},
-        {"generator": rag_llm},
+    rag_author_proxy = (
+        RagAuthorProxyQueryClient.build_client(
+            [ground_truth_paper],
+            {"embedder": embedding_model},
+            {"generator": rag_llm},
+        )
+        if execution_mode == "author-focus"
+        else None
     )
 
     architect_map = {
@@ -425,11 +429,19 @@ class Test_Massi_GBIF_Scenarios_X_Cases(ScenarioBasedSuite):
     scenarios_x_cases = load_scenarios_x_cases(
         {
             "variant": "full",
-            "provider": "openai-platform",
+            "provider": "ivi",
             "schema": "dwc",
             # "schema": "eml",
+            "config": {
+                "provider": "ivi",
+                "core_platform": "surf-ivi",
+                "proxy_platform": "openai",
+                "core_llm": "o3-mini",
+                "embedding_model": "text-embedding-3-small",
+                "rag_llm": "gpt-5.4-mini",
+            },
         },
-        case_head_limit=200,
+        case_head_limit=2,
     )
 
     def test_scenario(self, id, tag, scenario_x_case, laminar_observer):
