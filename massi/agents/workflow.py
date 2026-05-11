@@ -419,7 +419,9 @@ def verify_gap_derivation_plan(
 
 
 # *__Conditional__*
-def check_is_plan_usable(state: MassiGoalResolutionState) -> str:
+def check_is_plan_usable(
+    state: MassiGoalResolutionState, dependencies: Dependencies | None = None
+) -> str:
     valid_gap_tasks: VerifiedMetadataGapDerivationPlan = take_valid_plan_tasks(state)
     total_steps_count = len(valid_gap_tasks["gaps"])
 
@@ -430,11 +432,10 @@ def check_is_plan_usable(state: MassiGoalResolutionState) -> str:
 
     current_pointer = state["current_gap_task_pointer"]
     completed = total_steps_count <= current_pointer
-    return (
-        export_metadata.__name__
-        if completed
-        else prepare_derivation_instruction.__name__
-    )
+    if completed:
+        return export_metadata.__name__
+    else:
+        return prepare_derivation_instruction.__name__
 
 
 def prepare_derivation_instruction(
@@ -561,7 +562,10 @@ def _build_goal_resolution_graph(
     builder.add_conditional_edges(
         verify_gap_derivation_plan.__name__,
         check_is_plan_usable,
-        [prepare_derivation_instruction.__name__, export_metadata.__name__],
+        [
+            export_metadata.__name__,
+            prepare_derivation_instruction.__name__,
+        ],
     )
     builder.add_edge(
         prepare_derivation_instruction.__name__, execute_gap_derivation.__name__
