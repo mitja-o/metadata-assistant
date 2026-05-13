@@ -29,6 +29,7 @@ dependencies = [
 
 [dependency-groups]
 analysis = [
+    "apted>=1.0.3",
     "matplotlib>=3.10.9",
 ]
 dev = [

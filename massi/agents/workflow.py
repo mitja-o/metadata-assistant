@@ -153,7 +153,13 @@ def validate_gap_task(
     dataset_csv_files = set((str(f["location"]) for f in state["dataset"]["csv_files"]))
     blueprint: MetadataBlueprint = state["architect_xml_blueprint"]
     validation: GapTaskValidation = {
-        "valid_pattern": gap_task["gap_replacement_pattern"] in blueprint["content"],
+        "valid_pattern": all(
+            (
+                (gap_task["gap_id"]),
+                (gap_task["gap_id"] in gap_task["gap_replacement_pattern"]),
+                (gap_task["gap_replacement_pattern"] in blueprint["content"]),
+            )
+        ),
         "valid_files": all(
             (
                 bool(gap_task["gap_scope_files"]),
@@ -282,39 +288,6 @@ def terminate(state: MassiCoreState) -> MassiCoreState:
 # -- Subgraph
 
 
-def _is_ground_truth_metadata_given(state: MassiGoalResolutionState) -> bool:
-    # FIXME(implement): check if a ground truth metadata is given
-    #   | T -> mask the metadata into a blueprint
-    #   | F -> call the architect
-    goal = state["goal"]
-    ground_truth_metadata = goal.get("ground_truth_metadata_file", None)
-    logger.info(f"Received: {ground_truth_metadata=}")
-    return (
-        mask_ground_truth_metadata.__name__
-        if ground_truth_metadata
-        else prepare_metadata_blueprint_architect.__name__
-    )
-
-
-def mask_ground_truth_metadata(
-    state: MassiGoalResolutionState, dependencies: Dependencies | None = None
-) -> MassiGoalResolutionState:
-    assert dependencies
-    assert dependencies["metadata_masker"]
-    goal_ground_truth_metadata_file = state["goal"]["ground_truth_metadata_file"]
-    masker = dependencies["metadata_masker"]
-    assert masker
-    assert goal_ground_truth_metadata_file
-    ground_truth_metadata_path = Path(goal_ground_truth_metadata_file)
-    ground_truth_metadata = ground_truth_metadata_path.read_text()
-    logger.debug(f"{ground_truth_metadata=}")
-
-    blueprint = masker.invoke(ground_truth_metadata)
-    logger.debug(f"{blueprint["content"]=}")
-
-    return {"architect_xml_blueprint": blueprint}
-
-
 def prepare_metadata_blueprint_architect(
     state: MassiGoalResolutionState, dependencies: Dependencies | None = None
 ) -> MassiGoalResolutionState:
@@ -358,6 +331,36 @@ def prepare_metadata_blueprint_architect(
         "context_blocks": context_blocks,
         "architect_prompt": architect_prompt,
     }
+
+
+def _is_ground_truth_metadata_given(state: MassiGoalResolutionState) -> bool:
+    goal = state["goal"]
+    ground_truth_metadata = goal.get("ground_truth_metadata_file", None)
+    logger.info(f"Received: {ground_truth_metadata=}")
+    return (
+        mask_ground_truth_metadata.__name__
+        if ground_truth_metadata
+        else invoke_metadata_blueprint_architect.__name__
+    )
+
+
+def mask_ground_truth_metadata(
+    state: MassiGoalResolutionState, dependencies: Dependencies | None = None
+) -> MassiGoalResolutionState:
+    assert dependencies
+    assert dependencies["metadata_masker"]
+    goal_ground_truth_metadata_file = state["goal"]["ground_truth_metadata_file"]
+    masker = dependencies["metadata_masker"]
+    assert masker
+    assert goal_ground_truth_metadata_file
+    ground_truth_metadata_path = Path(goal_ground_truth_metadata_file)
+    ground_truth_metadata = ground_truth_metadata_path.read_text()
+    logger.debug(f"{ground_truth_metadata=}")
+
+    blueprint = masker.invoke(ground_truth_metadata)
+    logger.debug(f"{blueprint["content"]=}")
+
+    return {"architect_xml_blueprint": blueprint}
 
 
 def invoke_metadata_blueprint_architect(
@@ -533,25 +536,25 @@ def _build_goal_resolution_graph(
         node_func = partial(fn, **kwargs) if kwargs else fn
         builder.add_node(node_name, node_func)
 
+    # -- always prepare the architect input
+    builder.add_edge(
+        START,
+        prepare_metadata_blueprint_architect.__name__,
+    )
     # -- allows to bypass the architect for ablation studies
     builder.add_conditional_edges(
-        START,
+        prepare_metadata_blueprint_architect.__name__,
         _is_ground_truth_metadata_given,
         [
             mask_ground_truth_metadata.__name__,
-            prepare_metadata_blueprint_architect.__name__,
+            invoke_metadata_blueprint_architect.__name__,
         ],
     )
     # -- go directly from the masking to planning
     builder.add_edge(
         mask_ground_truth_metadata.__name__, make_gap_derivation_plan.__name__
     )
-
     # -- regular 'full' flow with arhchitect
-    builder.add_edge(
-        prepare_metadata_blueprint_architect.__name__,
-        invoke_metadata_blueprint_architect.__name__,
-    )
     builder.add_edge(
         invoke_metadata_blueprint_architect.__name__, make_gap_derivation_plan.__name__
     )

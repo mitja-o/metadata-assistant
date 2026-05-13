@@ -18,6 +18,7 @@ from massi.agents.team.operators._interface import (
     OperatorRequest,
     OperatorResponse,
 )
+from massi.agents.tools import make_working_copy_csv_name
 
 logger = logging.getLogger(__name__)
 
@@ -81,7 +82,7 @@ You MUST terminate if {current_turn} is larger than {turn_limit}.
         original file names in SQL queries.
         """
         tab_rows = [
-            f"| `{Path(fp).name}` | **`{str(Path(fp))}`** |"
+            f"| `{Path(fp).name}` | **`{str(make_working_copy_csv_name(Path(fp)))}`** |"
             for fp in request["tabular_files"]
         ]
         ptext_rows = [

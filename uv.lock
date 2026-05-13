@@ -158,6 +158,15 @@ wheels = [
 ]
 
 [[package]]
+name = "apted"
+version = "1.0.3"
+source = { registry = "https://pypi.org/simple" }
+sdist = { url = "https://files.pythonhosted.org/packages/e0/29/3a42b2fb26272a464a9fbf455928a7e4255efa2e6f56679e9c0adaaf798a/apted-1.0.3.tar.gz", hash = "sha256:befa5181e2d4457fa88e54995a82604ee048bb2fbc781ea97d8e1856b4715ce9", size = 24547, upload-time = "2017-11-08T13:03:23.294Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/b9/71/c2bcf92376d3ae65d57111d33f577aca68d343e1b7b1914a3767bfbac18e/apted-1.0.3-py3-none-any.whl", hash = "sha256:74193369d023649d335269e67c4df07f922959e5ac2597de1b79af4e694150e8", size = 40566, upload-time = "2017-11-08T13:03:21.831Z" },
+]
+
+[[package]]
 name = "argon2-cffi"
 version = "25.1.0"
 source = { registry = "https://pypi.org/simple" }
@@ -2290,6 +2299,7 @@ dependencies = [
 
 [package.dev-dependencies]
 analysis = [
+    { name = "apted" },
     { name = "matplotlib" },
 ]
 dev = [
@@ -2335,7 +2345,10 @@ requires-dist = [
 ]
 
 [package.metadata.requires-dev]
-analysis = [{ name = "matplotlib", specifier = ">=3.10.9" }]
+analysis = [
+    { name = "apted", specifier = ">=1.0.3" },
+    { name = "matplotlib", specifier = ">=3.10.9" },
+]
 dev = [
     { name = "black", specifier = ">=26.1.0" },
     { name = "isort", specifier = ">=7.0.0" },

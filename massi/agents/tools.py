@@ -15,17 +15,24 @@ from massi.agents.team._dto import CSVDetails
 
 logger = logging.getLogger(__name__)
 
+
+class DEFAULTS:
+    massi_working_copy_csv_suffix = "._massi-wc_.csv"
+
+
 # file system
 # -----------
 
 
 def glob_file_search(pattern: str, root: str = "./") -> Iterator[pl.Path]:
-    """
-    Return all files matching pattern under root directory
+    """Return all files matching pattern under root directory
 
-    :param pattern: file path pattern with wildcards (e.g., *.py). No tilde expansion is done, but *, ?, and character ranges expressed with [] will be correctly matched.
-    :param root: starting point for search in cwd by default
-    :return: iterator of matched paths
+    Args:
+        pattern (str): file path pattern with wildcards (e.g., *.py). No tilde expansion is done, but *, ?, and character ranges expressed with [] will be correctly matched.
+        root (str, optional): starting point for search. Defaults to "./".
+
+    Yields:
+        Iterator[pl.Path]: iterator of matched paths
 
     Examples:
         >>> import tempfile as tf
@@ -41,9 +48,47 @@ def glob_file_search(pattern: str, root: str = "./") -> Iterator[pl.Path]:
     return pl.Path(root).resolve().glob(pattern)
 
 
-def walk_working_dir_for_files(seed_path: str = ".") -> Iterator[pl.Path]:
+def walk_working_dir_for_files(
+    seed_path: str = ".", exclude_massi_working_files=True
+) -> Iterator[pl.Path]:
+    """_summary_
+
+    Args:
+        seed_path (str, optional): starting point for search. Defaults to ".".
+        exclude_massi_working_files (bool, optional): flag to exclude the generated working copy files from the yield of paths
+
+    Yields:
+        Iterator[pl.Path]: iterator of matched paths
+
+    Examples:
+        >>> import tempfile as tf
+        >>> from pathlib import Path
+        >>> with tf.TemporaryDirectory() as tdn:
+        ...     tdp = Path(tdn)
+        ...     test_file_1 = tdp / "simple-test.test.txt"
+        ...     test_file_2 = tdp / ("simple-test.test.txt" + DEFAULTS.massi_working_copy_csv_suffix)
+        ...     _ = test_file_1.write_text("test content")
+        ...     _ = test_file_2.write_text("this file should be excluded from the returns")
+        ...
+        ...     standard_list = list(walk_working_dir_for_files(tdn))
+        ...     full_list = list(walk_working_dir_for_files(tdn, exclude_massi_working_files=False))
+        >>> standard_list # doctest: +ELLIPSIS
+        [PosixPath('.../simple-test.test.txt')]
+        >>> full_list # doctest: +ELLIPSIS
+        [PosixPath('.../simple-test.test.txt'), PosixPath('.../simple-test.test.txt._massi-wc_.csv')]
+    """
     paths = glob_file_search("**/*", seed_path)
-    return filter(lambda p: p.is_file(), paths)
+    # filters all working copy files
+    return filter(
+        lambda p: (
+            p.is_file()
+            and not (
+                exclude_massi_working_files
+                and str(p).endswith(DEFAULTS.massi_working_copy_csv_suffix)
+            )
+        ),
+        paths,
+    )
 
 
 def get_file_stats(path: pl.Path) -> tuple[pl.Path, os.stat_result]:
@@ -61,10 +106,30 @@ def get_raw_file_head(
     return raw_head
 
 
-def get_csv_details(csv: pl.Path, separator: str | None = None) -> CSVDetails:
+def make_working_copy_csv_name(csv_file: pl.Path) -> pl.Path:
+    """Create a consistent working copy CSV name.
+
+    Args:
+        csv_file (pl.Path): input file path
+
+    Returns:
+        pl.Path: reserved working copy CSV file path
+
+    Examples:
+        >>> p = pl.Path("foo.csv")
+        >>> str(make_working_copy_csv_name(p))
+        'foo.csv._massi-wc_.csv'
+        >>> q = pl.Path("foo.txt")
+        >>> str(make_working_copy_csv_name(q))
+        'foo.txt._massi-wc_.csv'
+    """
+    return csv_file.with_name(csv_file.name + DEFAULTS.massi_working_copy_csv_suffix)
+
+
+def get_csv_details(csv_file: pl.Path, separator: str | None = None) -> CSVDetails:
     head_size: int = 5
-    raw_head = get_raw_file_head(csv, head_size=head_size)
-    df = pd.read_csv(csv, sep=separator, on_bad_lines="warn")
+    raw_head = get_raw_file_head(csv_file, head_size=head_size)
+    df = pd.read_csv(csv_file, sep=separator, on_bad_lines="warn")
     details: CSVDetails = {
         "delimiter": separator,
         "column_count": df.shape[1],
@@ -76,6 +141,7 @@ def get_csv_details(csv: pl.Path, separator: str | None = None) -> CSVDetails:
             None, sep=",", index=False
         ),
     }
+    df.to_csv(make_working_copy_csv_name(pl.Path(csv_file)), sep=",", index=False)
     del df
     return details
 

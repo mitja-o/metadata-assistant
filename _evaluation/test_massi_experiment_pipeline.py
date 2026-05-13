@@ -27,6 +27,7 @@ from massi.agents.team.instructors import (
     AuthorGapDerivationInstructor,
     DataGapDerivationInstructor,
 )
+from massi.agents.team.masker import ProbabilityValueXMLMasker
 from massi.agents.team.operators import (
     AuthorGapDervationOperator,
     DataGapDervationOperator,
@@ -54,6 +55,7 @@ class DEFAULTS:
     lmnr_base_url = "http://0.0.0.0"
     recursion_limit = 30
     turn_limit = 5
+    mask_probability = 0.5
 
     @staticmethod
     def ground_experiment_path(path_suffix: str | Path) -> Path:
@@ -149,6 +151,7 @@ class DEFAULTS:
 
 def build_core_dependencies(
     execution_mode: MassiExecutionMode,
+    mask_probability: float,
     ground_truth_paper: Path,
     core_llm: BaseChatModel,
     rag_llm: BaseChatModel,
@@ -169,6 +172,7 @@ def build_core_dependencies(
         "darwin_core": DarwinCoreArchitect(core_llm),
         "eml": EMLArchitect(core_llm),
     }
+    metadata_masker = ProbabilityValueXMLMasker(mask_probability)
     planner_map = {
         "darwin_core": DarwinCorePlanner(core_llm),
         "eml": EMLPlanner(core_llm),
@@ -188,6 +192,7 @@ def build_core_dependencies(
     return dict(
         execution_mode=execution_mode,
         architect_map=architect_map,
+        metadata_masker=metadata_masker,
         planner_map=planner_map,
         gap_derivation_instructor_map=derivation_instructors_map,
         derivation_map=derivation_map,
@@ -428,20 +433,22 @@ def pytest_generate_tests(metafunc: MetaScenarioSuite):
 class Test_Massi_GBIF_Scenarios_X_Cases(ScenarioBasedSuite):
     scenarios_x_cases = load_scenarios_x_cases(
         {
-            "variant": "full",
-            "provider": "ivi",
+            "variant": "ablation",
+            "provider": "openai-platform",
             "schema": "dwc",
+            "strategy": "data-focus",
+            # "provider": "ivi",
             # "schema": "eml",
-            "config": {
-                "provider": "ivi",
-                "core_platform": "surf-ivi",
-                "proxy_platform": "openai",
-                "core_llm": "o3-mini",
-                "embedding_model": "text-embedding-3-small",
-                "rag_llm": "gpt-5.4-mini",
-            },
+            # "config": {
+            #     "provider": "ivi",
+            #     "core_platform": "surf-ivi",
+            #     "proxy_platform": "openai",
+            #     "core_llm": "o3-mini",
+            #     "embedding_model": "text-embedding-3-small",
+            #     "rag_llm": "gpt-5.4-mini",
+            # },
         },
-        case_head_limit=2,
+        case_head_limit=1,
     )
 
     def test_scenario(self, id, tag, scenario_x_case, laminar_observer):
@@ -461,6 +468,7 @@ class Test_Massi_GBIF_Scenarios_X_Cases(ScenarioBasedSuite):
         ]
         core_dependencies = build_core_dependencies(
             test_record["strategy"],
+            DEFAULTS.mask_probability,
             DEFAULTS.ground_experiment_path(test_record["ground_truth_paper_path"]),
             core_llm_builder(test_record["config"]["core_llm"]),
             rag_llm_builder(test_record["config"]["rag_llm"]),
@@ -478,9 +486,11 @@ class Test_Massi_GBIF_Scenarios_X_Cases(ScenarioBasedSuite):
         # prepare inputs
         ground_truth_goal: MetadataGoal = (
             {
-                "ground_truth_metadata_file": DEFAULTS.schema_to_ground_truth_key[
-                    test_record["schema"]
-                ]
+                "ground_truth_metadata_file": DEFAULTS.ground_experiment_path(
+                    test_record[
+                        DEFAULTS.schema_to_ground_truth_key[test_record["schema"]]
+                    ]
+                )
             }
             if test_record["variant"] == "ablation"
             else {}
@@ -507,6 +517,11 @@ class Test_Massi_GBIF_Scenarios_X_Cases(ScenarioBasedSuite):
             "goals": [goal_input],
         }
 
+        # # FIXME: debug
+        # assert base_state["goals"][0]["ground_truth_metadata_file"] == "", base_state[
+        #     "goals"
+        # ][0]["ground_truth_metadata_file"]
+
         # --- Act ---
         thread_config = {"configurable": {"thread_id": str(random.randint(1, 100))}}
         with Laminar.start_as_current_span(
@@ -516,6 +531,7 @@ class Test_Massi_GBIF_Scenarios_X_Cases(ScenarioBasedSuite):
                 "evaluation_id": evaluation_time_id(f"run-{__name__}"),
                 "run_id": id,
                 "tag": tag,
+                "experiment_tag": test_record["short_scenario_x_case_tag"],
             },
         ) as _span:
             with timeit() as timer:
