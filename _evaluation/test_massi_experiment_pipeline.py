@@ -433,20 +433,21 @@ def pytest_generate_tests(metafunc: MetaScenarioSuite):
 class Test_Massi_GBIF_Scenarios_X_Cases(ScenarioBasedSuite):
     scenarios_x_cases = load_scenarios_x_cases(
         {
-            "variant": "ablation",
-            "provider": "openai-platform",
+            "variant": "full",
+            # "provider": "openai-platform",
+            "provider": "ivi",
             "schema": "dwc",
-            "strategy": "data-focus",
-            # "provider": "ivi",
             # "schema": "eml",
-            # "config": {
-            #     "provider": "ivi",
-            #     "core_platform": "surf-ivi",
-            #     "proxy_platform": "openai",
-            #     "core_llm": "o3-mini",
-            #     "embedding_model": "text-embedding-3-small",
-            #     "rag_llm": "gpt-5.4-mini",
-            # },
+            "strategy": "data-focus",
+            # "strategy": "author-focus",
+            "config": {
+                "provider": "ivi",
+                "core_platform": "surf-ivi",
+                "proxy_platform": "openai",
+                "core_llm": "gpt-5-mini",
+                "embedding_model": "text-embedding-3-small",
+                "rag_llm": "gpt-5-mini",
+            },
         },
         case_head_limit=1,
     )

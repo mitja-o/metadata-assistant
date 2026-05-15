@@ -82,9 +82,6 @@ class DataGapDervationOperator(GapDerivationOperator):
 # :::::::::::::
 
 
-# FIXME(implement): create the similar operator wrapper for `AuthorInterviewerAgent`
-
-
 class AuthorGapDervationOperator(GapDerivationOperator):
     def __init__(
         self,
