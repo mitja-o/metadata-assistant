@@ -31,6 +31,9 @@ dependencies = [
 analysis = [
     "apted>=1.0.3",
     "matplotlib>=3.10.9",
+    "rouge-score>=0.1.2",
+    "sentence-transformers>=5.5.1 ; platform_machine == 'arm64'",
+    "tol-colors>=2.2.0",
 ]
 dev = [
     "black>=26.1.0",

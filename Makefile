@@ -156,7 +156,8 @@ check-lmnr-frontend-port: ./utils/lmnr
 
 .PHONY: start-local-notebook
 start-local-notebook start-lnb:
-	uv run --group notebook --group dev jupyter lab
+	pip install -v . --group notebook
+	jupyter lab
 
 # Containerized (dev) runtime
 # ===========================
