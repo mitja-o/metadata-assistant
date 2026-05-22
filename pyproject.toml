@@ -33,6 +33,9 @@ analysis = [
     "matplotlib>=3.10.9",
     "rouge-score>=0.1.2",
     "sentence-transformers>=5.5.1 ; platform_machine == 'arm64'",
+    "nltk>=3.9.4",
+    "prefixspan>=0.5.2",
+    "scikit-learn>=1.8.0",
     "tol-colors>=2.2.0",
 ]
 dev = [
