@@ -5,6 +5,8 @@ _demo/papers
 _evaluation/papers
 _evaluation/reports
 _evaluation/datasets
+_evaluation/**/*.png
+_evaluation/**/*.pdf
 _validation/data
 _data
 _downloads
