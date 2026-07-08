@@ -37,6 +37,7 @@ analysis = [
     "prefixspan>=0.5.2",
     "scikit-learn>=1.8.0",
     "tol-colors>=2.2.0",
+    "jupysql>=0.11.1",
 ]
 dev = [
     "black>=26.1.0",
