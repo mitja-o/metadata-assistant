@@ -145,7 +145,7 @@ run-ollama-model run-model:
 
 .PHONY: start-observer-lmnr
 start-observer-lmnr start-luminar start-lmnr: ./utils/lmnr
-	cd utils/lmnr && docker compose up
+	cd utils/lmnr && docker compose up --pull never
 
 .PHONY: check-lmnr-frontend-port
 check-lmnr-frontend-port: ./utils/lmnr
