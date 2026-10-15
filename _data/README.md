@@ -8,5 +8,4 @@ These files are automatically picked up by the scripts in the [`Makefile`](./../
 These files should be manually provided:
 
 - `gbif_data_archive.zip` - a zip file of the GBIF experiment dataset.
-- `gbif_cases.csv` - metadata about the downloaded GBIF cases.
 - `experiment_scenarios.csv` - a listing of configured experiment runtimes.
