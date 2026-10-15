@@ -35,65 +35,14 @@ DATA_DIR=_data
 GBIF_DATA_DIR=${DATA_DIR}/gbif_data_archive
 
 # unpack the download
-${GBIF_DATA_DIR}/.key: _downloads/gbif_data_archive.zip
+${GBIF_DATA_DIR}/.key: ${DATA_DIR}/gbif_data_archive.zip
 	rm -rf ${GBIF_DATA_DIR}/.key
-	mkdir -p ${DATA_DIR}
-	unzip _downloads/gbif_data_archive.zip -d ${DATA_DIR}
+	unzip ${DATA_DIR}/gbif_data_archive.zip -d ${DATA_DIR}
 	@echo "🗝️ Making a target key"
 	touch ${GBIF_DATA_DIR}/.key
 
-# prepare the working data
-${GBIF_DATA_DIR}/working_copy/.key: ${GBIF_DATA_DIR}/.key
-	rm -rf ${GBIF_DATA_DIR}/working_copy/.key
-	@echo "🚚 Preparing the working data"
-	mkdir -p ${GBIF_DATA_DIR}/working_copy
-	cp -r ${GBIF_DATA_DIR}/data ${GBIF_DATA_DIR}/working_copy
-	@echo "🗃️ Unpacking the working data"
-	for z in ${GBIF_DATA_DIR}/working_copy/data/*.zip; do \
-		echo "~~ placing: $$z --> $${z%.*} ..." ; \
-		format=$$(7zz l "$$z" | grep "Type =" | awk '{print $$3}') ; \
-		case "$${format}" in \
-			"gzip") \
-				echo "   (Detected wrapper: $${format})" ; \
-				7zz x "$$z" -so > "$$z.tmp" ; \
-				7zz x "$$z.tmp" -y -o"$${z%.*}" -xr!".*" -xr!"__*" -xr!"*.xml" > /dev/null ; \
-				rm "$$z.tmp" ;; \
-			*) \
-				echo "   (Detected standard: $${format})" ; \
-				7zz x "$$z" -y -o"$${z%.*}" -xr!".*" -xr!"__*" -xr!"*.xml" > /dev/null ;; \
-		esac ; \
-	done
-	@echo "🗝️ Making a target key"
-	touch ${GBIF_DATA_DIR}/working_copy/.key
-
-# prepare the ground truth
-${GBIF_DATA_DIR}/ground_truth/.key: ${GBIF_DATA_DIR}/working_copy/.key
-	rm -rf ${GBIF_DATA_DIR}/ground_truth/.key
-	@echo "🚚 Preparing the ground truth data"
-	mkdir -p ${GBIF_DATA_DIR}/ground_truth/data
-	mkdir -p ${GBIF_DATA_DIR}/ground_truth/papers
-	mv ${GBIF_DATA_DIR}/data ${GBIF_DATA_DIR}/ground_truth
-	mv ${GBIF_DATA_DIR}/papers ${GBIF_DATA_DIR}/ground_truth
-	@echo "🗃️ Unpacking the ground truth metadata"
-	@for z in ${GBIF_DATA_DIR}/ground_truth/data/*.zip; do \
-		echo "~~ placing: $$z --> $${z%.*} ..." ; \
-		format=$$(7zz l "$$z" | grep "Type =" | awk '{print $$3}') ; \
-		case "$${format}" in \
-			"gzip") \
-				echo "   (Detected wrapper: $${format})" ; \
-				7zz x "$$z" -so > "$$z.tmp" ; \
-				7zz x "$$z.tmp" -y -o"$${z%.*}" eml.xml meta.xml > /dev/null ; \
-				rm "$$z.tmp" ;; \
-			*) \
-				echo "   (Detected standard: $${format})" ; \
-				7zz x "$$z" -y -o"$${z%.*}" eml.xml meta.xml > /dev/null ;; \
-		esac ; \
-	done
-	@echo "🗝️ Making a target key"
-	touch ${GBIF_DATA_DIR}/ground_truth/.key
-
 # Create the output storage directory
-${GBIF_DATA_DIR}/out/.key: ${GBIF_DATA_DIR}/ground_truth/.key
+${GBIF_DATA_DIR}/out/.key: ${GBIF_DATA_DIR}/.key
 	rm -rf ${GBIF_DATA_DIR}/out/.key
 	mkdir -p ${GBIF_DATA_DIR}/out
 	@echo "🗝️ Making a target key"
