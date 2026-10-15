@@ -8,7 +8,9 @@ _evaluation/datasets
 _evaluation/**/*.png
 _evaluation/**/*.pdf
 _validation/data
-_data
+_data/*
+!_data/.gitkeep
+!_data/README.md
 _downloads
 .tmp
 
