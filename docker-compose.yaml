@@ -1,4 +1,4 @@
-name: miagis-assistant
+name: massi
 services:
   jupyter-nb:
     container_name: jupyter-nb
