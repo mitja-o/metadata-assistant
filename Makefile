@@ -102,17 +102,21 @@ ${DATA_DIR}/.key: ${GBIF_DATA_DIR}/out/.key
 	touch ${DATA_DIR}/.key
 
 # prepare the case inputs
-_evaluation/runtime/gbif_cases.csv: ${DATA_DIR}/.key ${GBIF_DATA_DIR}/downloaded_gbif_cases.csv
-	mkdir -p _evaluation/runtime/
-	cp ${GBIF_DATA_DIR}/downloaded_gbif_cases.csv _evaluation/runtime/gbif_cases.csv
+evaluation/runtime/gbif_cases.csv: ${DATA_DIR}/.key ${GBIF_DATA_DIR}/downloaded_gbif_cases.csv
+	mkdir -p evaluation/runtime/
+	cp ${GBIF_DATA_DIR}/downloaded_gbif_cases.csv evaluation/runtime/gbif_cases.csv
+
+evaluation/runtime/experiment_scenarios.csv: ${DATA_DIR}/.key ${DATA_DIR}/experiment_scenarios.csv
+	mkdir -p evaluation/runtime/
+	cp ${DATA_DIR}/experiment_scenarios.csv evaluation/runtime/experiment_scenarios.csv
 
 # run the experiments
 .PHONY: evaluate
-evaluate: pyproject.toml _evaluation _evaluation/runtime/gbif_cases.csv
+evaluate: pyproject.toml evaluation evaluation/runtime/gbif_cases.csv evaluation/runtime/experiment_scenarios.csv
 	@echo "⚗️ Running the experiments"
-	mkdir -p _evaluation/reports/runs/
-	uv run --group dev --group sandbox --group observability pytest _evaluation \
-		| tee '_evaluation/reports/runs/run-$(shell date +%s).txt'
+	mkdir -p evaluation/reports/runs/
+	uv run --group dev --group sandbox --group observability pytest evaluation \
+		| tee 'evaluation/reports/runs/run-$(shell date +%s).txt'
 
 # Developer hints
 # ===============
