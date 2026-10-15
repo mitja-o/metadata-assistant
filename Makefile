@@ -28,6 +28,9 @@ test: pyproject.toml
 # Evaluations
 # ===========
 
+# Data Preparation
+# ----------------
+
 DATA_DIR=_data
 GBIF_DATA_DIR=${DATA_DIR}/gbif_data_archive
 
@@ -101,14 +104,18 @@ ${DATA_DIR}/.key: ${GBIF_DATA_DIR}/out/.key
 	@echo "🗝️ Making a target key"
 	touch ${DATA_DIR}/.key
 
+# Experiment Runs
+# ---------------
+
 # prepare the case inputs
 evaluation/runtime/gbif_cases.csv: ${DATA_DIR}/.key ${GBIF_DATA_DIR}/downloaded_gbif_cases.csv
 	mkdir -p evaluation/runtime/
 	cp ${GBIF_DATA_DIR}/downloaded_gbif_cases.csv evaluation/runtime/gbif_cases.csv
 
-evaluation/runtime/experiment_scenarios.csv: ${DATA_DIR}/.key ${DATA_DIR}/experiment_scenarios.csv
+# use the default experiment scenarios unless already defined
+evaluation/runtime/experiment_scenarios.csv: evaluation/defaults/experiment_scenarios.csv
 	mkdir -p evaluation/runtime/
-	cp ${DATA_DIR}/experiment_scenarios.csv evaluation/runtime/experiment_scenarios.csv
+	cp evaluation/defaults/experiment_scenarios.csv evaluation/runtime/experiment_scenarios.csv
 
 # run the experiments
 .PHONY: evaluate
@@ -117,6 +124,17 @@ evaluate: pyproject.toml evaluation evaluation/runtime/gbif_cases.csv evaluation
 	mkdir -p evaluation/reports/runs/
 	uv run --group dev --group sandbox --group observability pytest evaluation \
 		| tee 'evaluation/reports/runs/run-$(shell date +%s).txt'
+
+# Experiment Analyses
+# -------------------
+
+# copy the experiment outputs for analysis
+analysis/experiment_cross_scenarios_cases.log.csv: evaluation/runtime/experiment_cross_scenarios_cases.log.csv
+	cp evaluation/runtime/experiment_cross_scenarios_cases.log.csv analysis/experiment_cross_scenarios_cases.log.csv
+
+start-analysis: analysis/experiment_cross_scenarios_cases.log.csv
+	@echo "⚗️ Experiment results are ready for analysis"
+	ls -l analysis/experiment_cross_scenarios_cases.log.csv
 
 # Developer hints
 # ===============
