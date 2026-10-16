@@ -5,6 +5,7 @@ description = "(M)IAGIS (Assi)stant is an LLM-Agent helper for generating MIAGIS
 readme = "README.md"
 requires-python = ">=3.13"
 dependencies = [
+    "duckdb>=1.5.1",
     "grandalf>=0.8",
     "ipython>=8.38.0",
     "ipywidgets>=8.1.8",
@@ -15,29 +16,53 @@ dependencies = [
     "langchain-ollama>=1.0.1",
     "langchain-openai>=1.1.9",
     "langgraph>=1.0.5",
+    "lxml>=6.1.0",
+    "numpy>=2.4.4",
     "pandas>=3.0.0",
+    "pymupdf>=1.27.2.3",
+    "pypdf>=6.10.0",
     "python-dotenv>=1.2.1",
+    "requests>=2.32.5",
     "tabulate>=0.10.0",
+    "xmlschema>=4.3.1",
 ]
 
 [dependency-groups]
+analysis = [
+    "apted>=1.0.3",
+    "matplotlib>=3.10.9",
+    "rouge-score>=0.1.2",
+    "sentence-transformers>=5.5.1 ; platform_machine == 'arm64'",
+    "nltk>=3.9.4",
+    "prefixspan>=0.5.2",
+    "scikit-learn>=1.8.0",
+    "tol-colors>=2.2.0",
+    "jupysql>=0.11.1",
+    "pytz>=2026.4",
+]
 dev = [
     "black>=26.1.0",
     "isort>=7.0.0",
     "langgraph-cli[inmem]>=0.4.11",
     "mypy>=1.19.1",
     "pytest>=9.0.2",
+    "pytest-timeout>=2.4.0",
+    "pytest-xdist[psutil]>=3.8.0",
+    "tenacity>=9.1.4",
+    "xmldiff>=2.7.0",
 ]
-experiments = [
-    "pypdf>=6.8.0",
+notebook = [
+    "jupyterlab>=4.5.7",
 ]
-observability = ["lmnr[all]>=0.7.40"]
-sandbox = ["duckdb>=1.4.4"]
+observability = ["lmnr[all]==0.7.47"]
+sandbox = []
 
 [tool.pytest]
 minversion = "9.0"
-addopts = ["--doctest-modules"]
+addopts = ["--doctest-modules", "-rA", "-n", "logical"]
 testpaths = ["massi"]
+log_format = "%(asctime)s %(levelname)s %(message)s"
+log_date_format = "%Y-%m-%d %H:%M:%S"
 
 [tool.isort]
 profile = "black"

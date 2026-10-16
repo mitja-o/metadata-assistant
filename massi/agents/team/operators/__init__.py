@@ -1,0 +1,126 @@
+import json
+from abc import ABC, abstractmethod
+
+from langchain.chat_models import BaseChatModel
+
+from massi.agents.team._dto import (
+    MetadataGapTask,
+    MetadataGapTaskOutcome,
+    VerifiedMetadataGapTask,
+    XMLBlueprintGapPattern,
+)
+from massi.agents.team.operators.author_interviewer import (
+    AuthorInterviewerAgent,
+    AuthorInterviewerRequest,
+    AuthorInterviewerResponse,
+)
+from massi.agents.team.operators.data_explorer import (
+    DataExplorerAgent,
+    DataExplorerRequest,
+    DataExplorerResponse,
+)
+from massi.agents.team.telecom.author_proxy import IOAuthorQueryClient
+
+# Agent Protocol
+# --------------
+
+
+class GapDerivationOperator(ABC):
+    @abstractmethod
+    def invoke(
+        self,
+        prompt: str,
+        task: MetadataGapTask,
+    ) -> MetadataGapTaskOutcome: ...
+
+
+# Agent Instances
+# ---------------
+
+# Data Operator
+# :::::::::::::
+
+
+class DataGapDervationOperator(GapDerivationOperator):
+    def __init__(
+        self, llm_client: BaseChatModel, recursion_limit: int = 25, turn_limit: int = 7
+    ):
+        self._agent = DataExplorerAgent(
+            {
+                "llm_client": llm_client,
+                "recursion_limit": recursion_limit,
+                "turn_limit": turn_limit,
+            }
+        )
+
+    def invoke(
+        self,
+        prompt: str,
+        task: VerifiedMetadataGapTask,
+    ) -> MetadataGapTaskOutcome:
+        request: DataExplorerRequest = {
+            "instruction": prompt,
+            "plaintext_files": task["gap_scope_plaintext_files"],
+            "tabular_files": task["gap_scope_tabular_files"],
+        }
+        response: DataExplorerResponse = self._agent.invoke(request)["final_output"]
+
+        if response["result_value"]:
+            result = response["result_value"]
+        else:
+            result = json.dumps(
+                XMLBlueprintGapPattern.get_gap_pattern(
+                    task["gap_id"],
+                    f'{task["gap_type"]}-{response["success"]=}-{response["status"]=}',
+                    {response["outcome"]},
+                )
+            )
+        return {"result": {"content": result}, "task": task}
+
+
+# Author Operator
+# :::::::::::::
+
+
+class AuthorGapDervationOperator(GapDerivationOperator):
+    def __init__(
+        self,
+        llm_client: BaseChatModel,
+        io_author_client: IOAuthorQueryClient,
+        recursion_limit: int = 25,
+        turn_limit: int = 7,
+    ):
+        self._agent = AuthorInterviewerAgent(
+            {
+                "llm_client": llm_client,
+                "io_author_client": io_author_client,
+                "recursion_limit": recursion_limit,
+                "turn_limit": turn_limit,
+            }
+        )
+
+    def invoke(
+        self,
+        prompt: str,
+        task: VerifiedMetadataGapTask,
+    ) -> MetadataGapTaskOutcome:
+        request: AuthorInterviewerRequest = {
+            "instruction": prompt,
+            "plaintext_files": task["gap_scope_plaintext_files"],
+            "tabular_files": task["gap_scope_tabular_files"],
+        }
+        response: AuthorInterviewerResponse = self._agent.invoke(request)[
+            "final_output"
+        ]
+
+        if response["result_value"]:
+            result = response["result_value"]
+        else:
+            result = json.dumps(
+                XMLBlueprintGapPattern.get_gap_pattern(
+                    task["gap_id"],
+                    f'{task["gap_type"]}-{response["success"]=}-{response["status"]=}',
+                    {response["outcome"]},
+                )
+            )
+        return {"result": {"content": result}, "task": task}
