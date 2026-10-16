@@ -10,6 +10,10 @@ _data/*
 !_data/README.md
 evaluation/reports/*
 evaluation/runtime/*
+evaluation/statistics/**/*.csv
+evaluation/statistics/**/*.pdf
+evaluation/statistics/**/*.png
+evaluation/statistics/**/*.zip
 !evaluation/runtime/.gitkeep
 !evaluation/runtime/README.md
 _downloads
