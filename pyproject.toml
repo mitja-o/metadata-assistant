@@ -27,6 +27,9 @@ dependencies = [
     "xmlschema>=4.3.1",
 ]
 
+[tool.setuptools]
+packages = ["massi"]
+
 [dependency-groups]
 analysis = [
     "apted>=1.0.3",
