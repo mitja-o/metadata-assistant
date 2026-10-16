@@ -81,7 +81,7 @@ evaluate: pyproject.toml evaluation evaluation/runtime/gbif_cases.csv evaluation
 analysis/experiment_cross_scenarios_cases.log.csv: evaluation/runtime/experiment_cross_scenarios_cases.log.csv
 	cp evaluation/runtime/experiment_cross_scenarios_cases.log.csv analysis/experiment_cross_scenarios_cases.log.csv
 
-start-analysis: analysis/experiment_cross_scenarios_cases.log.csv
+prep-analysis: analysis/experiment_cross_scenarios_cases.log.csv
 	@echo "⚗️ Experiment results are ready for analysis"
 	ls -l analysis/experiment_cross_scenarios_cases.log.csv
 
