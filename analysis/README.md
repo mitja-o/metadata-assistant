@@ -2,5 +2,5 @@
 
 The notebooks in this directory are used for the analyis of the evaluation results.
 
-> [!IMPORTANT]
-> The clean analysis notebooks are currently being prepared from the manual notebooks in [`../evaluation/statistics/`](../evaluation/statistics/).
+- [`experiment_results_collected.ipynb`](./experiment_results_collected.ipynb) - is used to compute all the reported results.
+- [`experiment_cross_scenarios_cases.log.csv`](./experiment_cross_scenarios_cases.log.csv) - is the log of the ran experiments.

@@ -1,10 +1,7 @@
 # Development demo data files
 .demo/
-_evaluation/papers
-_evaluation/reports
-_evaluation/datasets
-_evaluation/**/*.png
-_evaluation/**/*.pdf
+_evaluation/*
+_evaluation_backup/*
 _data/*
 !_data/.gitkeep
 !_data/README.md
