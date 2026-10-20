@@ -27,8 +27,8 @@ dependencies = [
     "xmlschema>=4.3.1",
 ]
 
-[tool.setuptools]
-packages = ["massi"]
+[tool.setuptools.packages.find]
+where = ["massi"]
 
 [dependency-groups]
 analysis = [
