@@ -59,11 +59,6 @@ class ArchitectOutputs(TypedDict):
 # ~~~~~~~~~
 
 
-class PopulatorInputs(TypedDict):
-    metadata_template: str
-    """Metadata template for the given dataset and metadata schema."""
-
-
 class PopulatorOutputs(TypedDict):
     metadata_instance: str
     """A full metadata instance populated from the metadata template."""
@@ -94,8 +89,7 @@ class WorkflowState(MessagesState, total=False):
     # -------------
     architect_inputs: ArchitectInputs
     architect_outputs: ArchitectOutputs
-    populator_inputs: PopulatorInputs
-    populator_outputs: PopulatorInputs
+    populator_outputs: PopulatorOutputs
 
 
 type Node = Callable[[WorkflowState], WorkflowState]

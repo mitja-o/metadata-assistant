@@ -84,10 +84,12 @@ def populator(config: MassiConfig) -> Node:
     llm = make_llm(model=config["agent_models"]["populator"])
 
     def node(state: WorkflowState) -> WorkflowState:
-        inputs = state["architect_outputs"]
-        system_prompt = prompt_builder.system_prompt_with_input(inputs)
+        populator_inputs = state["architect_outputs"]
+        system_prompt = prompt_builder.system_prompt_with_input(populator_inputs)
+
         llm_client = llm.with_structured_output(PopulatorOutputs)
         response: AIMessage = llm_client.invoke([SystemMessage(system_prompt)])
+
         assert validate_dict(PopulatorOutputs, response.content)
         result: WorkflowState = {
             "populator_outputs": response.content,

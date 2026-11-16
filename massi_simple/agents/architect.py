@@ -100,10 +100,12 @@ def _architect(
     llm = make_llm(model=config["agent_models"]["architect"])
 
     def node(state: WorkflowState) -> WorkflowState:
-        inputs = state["architect_inputs"]
-        system_prompt = prompt_builder.system_prompt_with_input(inputs)
+        architect_inputs = state["architect_inputs"]
+        system_prompt = prompt_builder.system_prompt_with_input(architect_inputs)
+
         llm_client = llm.with_structured_output(ArchitectOutputs)
         response: AIMessage = llm_client.invoke([SystemMessage(system_prompt)])
+
         assert validate_dict(ArchitectOutputs, response.content)
         result: WorkflowState = {
             "architect_outputs": response.content,
