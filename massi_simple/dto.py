@@ -5,8 +5,6 @@ from typing import TypedDict
 from langgraph.graph import MessagesState
 from pydantic import TypeAdapter
 
-from massi_simple.config import MassiRuntimeConfig
-
 # Shared Utilities
 # ----------------
 
